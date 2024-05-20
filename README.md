@@ -1,4 +1,3 @@
-# Tokamak-trunks
 <div align="center">
   <h1> Tokamak Trunks</h1>
 </div>
