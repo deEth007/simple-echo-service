@@ -4,3 +4,5 @@
 
 ## TL;DR
 This is load test tool for tokamak-network L2 chain
+
+Implemented using [vegeta](https://github.com/tsenart/vegeta)
