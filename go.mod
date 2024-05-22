@@ -5,6 +5,7 @@ go 1.21.8
 require (
 	github.com/ethereum-optimism/optimism v1.7.0
 	github.com/ethereum/go-ethereum v1.13.8
+	github.com/urfave/cli/v2 v2.27.2
 )
 
 require (
@@ -60,7 +61,6 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220614013038-64ee5596c38a // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
-	github.com/urfave/cli/v2 v2.27.2 // indirect
 	github.com/xrash/smetrics v0.0.0-20240312152122-5f08fbb34913 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	golang.org/x/crypto v0.19.0 // indirect

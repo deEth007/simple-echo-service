@@ -1,10 +1,15 @@
 package nmgr
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
+	"time"
+
+	"github.com/tokamak-network/tokamak-trunks/utils"
 
 	"github.com/ethereum-optimism/optimism/op-chain-ops/state"
 	"github.com/ethereum/go-ethereum/common"
@@ -52,16 +57,44 @@ func (b *BaseNodeManager) Start() error {
 		return err
 	}
 
-	if err := runCommand(b.config.DockerComposeFileDirPath, []string{
+	addresses := utils.ReadJsonUnknown(b.nodeInfo.address)
+
+	env := []string{
 		fmt.Sprintf("L1_GENESIS_FILE_PATH=%s", b.nodeInfo.l1Genesis),
+		fmt.Sprintf("L2_GENESIS_FILE_PATH=%s", b.nodeInfo.l2Genesis),
+		fmt.Sprintf("ROLLUP_FILE_PATH=%s", b.nodeInfo.rollup),
 		fmt.Sprintf("JWT_SECRET_FILE_PATH=%s", b.nodeInfo.jwt),
-	}, "docker", "compose", "up", "-d", "l1"); err != nil {
+		fmt.Sprintf("L2OO_ADDRESS=%s", addresses["L2OutputOracleProxy"]),
+	}
+	dir := b.config.DockerComposeFileDirPath
+
+	if err := runCommand(
+		dir, env, "docker", "compose", "up", "-d", "l1"); err != nil {
+		return err
+	}
+	if err := waitUpServer("8545", time.Duration(10*time.Second)); err != nil {
+		return err
+	}
+	if err := waitRPCServer("8545", time.Duration(10*time.Second)); err != nil {
 		return err
 	}
 
-	fmt.Println(b.infoDir)
-	fmt.Printf("%v\n", b.config)
-	fmt.Printf("%v\n", b.nodeInfo)
+	if err := runCommand(
+		dir, env, "docker", "compose", "up", "-d", "l2"); err != nil {
+		return err
+	}
+	if err := waitUpServer("9545", time.Duration(10*time.Second)); err != nil {
+		return err
+	}
+	if err := waitRPCServer("9545", time.Duration(10*time.Second)); err != nil {
+		return err
+	}
+
+	if err := runCommand(
+		dir, env, "docker", "compose", "up", "-d", "op-node", "op-proposer", "op-batcher"); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -186,5 +219,65 @@ func runCommand(dir string, env []string, command string, args ...string) error 
 	cmd := exec.Command(command, args...)
 	cmd.Dir = dir
 	cmd.Env = append(cmd.Env, env...)
-	return cmd.Run()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("%s\n", output)
+		return err
+	} else {
+		fmt.Printf("%s\n", output)
+	}
+	return nil
+}
+
+func waitUpServer(port string, timeout time.Duration) error {
+	url := fmt.Sprintf("http://localhost:%s", port)
+	ch := make(chan bool)
+	go func() {
+		for {
+			_, err := http.Get(url)
+			if err == nil {
+				ch <- true
+			}
+			time.Sleep(time.Second)
+		}
+	}()
+
+	select {
+	case <-ch:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("server did not reply after %v", timeout)
+	}
+}
+
+func waitRPCServer(port string, timeout time.Duration) error {
+	url := fmt.Sprintf("http://localhost:%s", port)
+	body := []byte(`{"id":1, "jsonrpc":"2.0", "method": "eth_chainId", "params":[]}`)
+
+	r, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
+
+	r.Header.Add("Content-Type", "application/json")
+
+	client := &http.Client{}
+	ch := make(chan bool)
+	go func() {
+		for {
+			res, err := client.Do(r)
+			if err == nil && res.StatusCode < 300 {
+				res.Body.Close()
+				ch <- true
+			}
+			time.Sleep(time.Second)
+		}
+	}()
+
+	select {
+	case <-ch:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("server did not reply after %v", timeout)
+	}
 }

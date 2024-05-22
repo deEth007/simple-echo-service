@@ -30,8 +30,8 @@ services:
       - "8060:6060"
     volumes:
       - "l2_data:/db"
-      - "${INFO_PATH}/${L2_GENESIS_FILE_NAME}:/genesis.json"
-      - "${INFO_PATH}/${JWT_SECRET_FILE_NAME}:/config/test-jwt-secret.txt"
+      - "${L2_GENESIS_FILE_PATH}:/genesis.json"
+      - "${JWT_SECRET_FILE_PATH}:/config/test-jwt-secret.txt"
     entrypoint:  # pass the L2 specific flags by overriding the entry-point and adding extra arguments
       - "/bin/sh"
       - "/entrypoint.sh"
@@ -74,8 +74,8 @@ services:
       - "7300:7300"
       - "6060:6060"
     volumes:
-      - "${INFO_PATH}/${JWT_SECRET_FILE_NAME}:/config/test-jwt-secret.txt"
-      - "${INFO_PATH}/${ROLLUP_FILE_NAME}:/rollup.json"
+      - "${JWT_SECRET_FILE_PATH}:/config/test-jwt-secret.txt"
+      - "${ROLLUP_FILE_PATH}:/rollup.json"
       - op_log:/op_log
 
   op-proposer:
@@ -95,8 +95,7 @@ services:
       OP_PROPOSER_NUM_CONFIRMATIONS: 1
       OP_PROPOSER_MNEMONIC: test test test test test test test test test test test junk
       OP_PROPOSER_L2_OUTPUT_HD_PATH: "m/44'/60'/0'/0/1"
-      # OP_PROPOSER_L2OO_ADDRESS: "${L2OO_ADDRESS}"
-      OP_PROPOSER_L2OO_ADDRESS: "0xD31598c909d9C935a9e35bA70d9a3DD47d4D5865"
+      OP_PROPOSER_L2OO_ADDRESS: "${L2OO_ADDRESS}"
       OP_PROPOSER_GAME_FACTORY_ADDRESS: "${DGF_ADDRESS}"
       OP_PROPOSER_GAME_TYPE: "${DG_TYPE}"
       OP_PROPOSER_PROPOSAL_INTERVAL: "${PROPOSAL_INTERVAL}"
@@ -130,13 +129,13 @@ services:
       OP_BATCHER_RPC_ENABLE_ADMIN: "true"
       OP_BATCHER_BATCH_TYPE: 0
 
-  artifact-server:
-    depends_on:
-      - l1
-    image: nginx:1.25-alpine
-    ports:
-      - "8080:80"
-    volumes:
-      - "${INFO_PATH}/:/usr/share/nginx/html/:ro"
-    security_opt:
-      - "no-new-privileges:true"
+  # artifact-server:
+  #   depends_on:
+  #     - l1
+  #   image: nginx:1.25-alpine
+  #   ports:
+  #     - "8080:80"
+  #   volumes:
+  #     - "${INFO_PATH}/:/usr/share/nginx/html/:ro"
+  #   security_opt:
+  #     - "no-new-privileges:true"

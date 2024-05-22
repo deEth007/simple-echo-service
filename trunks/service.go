@@ -41,10 +41,13 @@ func NewService(cfg *CLIConfig) (*TrunksErvice, error) {
 }
 
 func (ts *TrunksErvice) Start() error {
-	ts.NodeMgr.Start()
+	if ts.NodeMgr != nil {
+		err := ts.NodeMgr.Start()
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-func (ts *TrunksErvice) Stop() {
-	defer ts.NodeMgr.Destroy()
-}
+func (ts *TrunksErvice) Stop() {}
