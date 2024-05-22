@@ -6,29 +6,29 @@ import (
 )
 
 const (
-	DockerComposeFilePathName = "docker-compose-file-path"
-	L1GenesisFilePathName     = "l1-genesis-file-path"
-	L2GenesisFilePathName     = "l2-genesis-file-path"
-	RollupConfigFilePathName  = "rollup-config-file-path"
-	AddressFilePathName       = "address-file-path"
-	JwtSecretFilePathName     = "jwt-file-path"
+	DockerComposeFileDirPathName = "docker-compose-file-dir-path"
+	L1GenesisFilePathName        = "l1-genesis-file-path"
+	L2GenesisFilePathName        = "l2-genesis-file-path"
+	RollupConfigFilePathName     = "rollup-config-file-path"
+	AddressFilePathName          = "address-file-path"
+	JwtSecretFilePathName        = "jwt-file-path"
 )
 
 type CLIConfig struct {
-	DockerComposeFilePath string
-	L1GenesisFilePath     string
-	L2GenesisFilePath     string
-	RollupConfigFilePath  string
-	AddressFilePath       string
-	JwtSecretFilePath     string
+	DockerComposeFileDirPath string
+	L1GenesisFilePath        string
+	L2GenesisFilePath        string
+	RollupConfigFilePath     string
+	AddressFilePath          string
+	JwtSecretFilePath        string
 }
 
 func CLIFlags(envPrefix string) []cli.Flag {
 	return []cli.Flag{
 		&cli.StringFlag{
-			Name:    DockerComposeFilePathName,
-			Usage:   "Docker compose file path",
-			EnvVars: utils.PrefixEnvVars(envPrefix, "DOCKER_COMPOSE_FILE_PATH"),
+			Name:    DockerComposeFileDirPathName,
+			Usage:   "Docker compose file dir path",
+			EnvVars: utils.PrefixEnvVars(envPrefix, "DOCKER_COMPOSE_FILE_DIR_PATH"),
 		},
 		&cli.StringFlag{
 			Name:    L1GenesisFilePathName,
@@ -60,11 +60,11 @@ func CLIFlags(envPrefix string) []cli.Flag {
 
 func ReadCLIConfig(ctx *cli.Context) CLIConfig {
 	return CLIConfig{
-		DockerComposeFilePath: ctx.String(DockerComposeFilePathName),
-		L1GenesisFilePath:     ctx.String(L1GenesisFilePathName),
-		L2GenesisFilePath:     ctx.String(L2GenesisFilePathName),
-		RollupConfigFilePath:  ctx.String(RollupConfigFilePathName),
-		AddressFilePath:       ctx.String(AddressFilePathName),
-		JwtSecretFilePath:     ctx.String(JwtSecretFilePathName),
+		DockerComposeFileDirPath: ctx.String(DockerComposeFileDirPathName),
+		L1GenesisFilePath:        ctx.String(L1GenesisFilePathName),
+		L2GenesisFilePath:        ctx.String(L2GenesisFilePathName),
+		RollupConfigFilePath:     ctx.String(RollupConfigFilePathName),
+		AddressFilePath:          ctx.String(AddressFilePathName),
+		JwtSecretFilePath:        ctx.String(JwtSecretFilePathName),
 	}
 }

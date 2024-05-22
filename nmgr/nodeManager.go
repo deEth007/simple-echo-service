@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 
 	"github.com/ethereum-optimism/optimism/op-chain-ops/state"
 	"github.com/ethereum/go-ethereum/common"
@@ -50,22 +51,23 @@ func (b *BaseNodeManager) Start() error {
 	if err := b.copyInfoFiles(); err != nil {
 		return err
 	}
-	// cmd := exec.Command("docker", "compose", "up", "-d", "l1")
-	// cmd.Dir = "./nmgr/nodes/optimism/"
-	// cmd.Stdout = os.Stdout
-	// cmd.Stdin = os.Stdin
 
-	// if err := cmd.Run(); err != nil {
-	// 	fmt.Println(err)
-	// }
+	if err := runCommand(b.config.DockerComposeFileDirPath, []string{
+		fmt.Sprintf("L1_GENESIS_FILE_PATH=%s", b.nodeInfo.l1Genesis),
+		fmt.Sprintf("JWT_SECRET_FILE_PATH=%s", b.nodeInfo.jwt),
+	}, "docker", "compose", "up", "-d", "l1"); err != nil {
+		return err
+	}
+
 	fmt.Println(b.infoDir)
 	fmt.Printf("%v\n", b.config)
 	fmt.Printf("%v\n", b.nodeInfo)
 	return nil
 }
+
 func (b *BaseNodeManager) Stop() {}
 func (b *BaseNodeManager) Destroy() {
-	delInfoDir(b.infoDir)
+	// delInfoDir(b.infoDir)
 }
 
 func (b *BaseNodeManager) Faucet(accounts []common.Address) {
@@ -178,4 +180,11 @@ func copyFile(src, dst string) error {
 	}
 
 	return nil
+}
+
+func runCommand(dir string, env []string, command string, args ...string) error {
+	cmd := exec.Command(command, args...)
+	cmd.Dir = dir
+	cmd.Env = append(cmd.Env, env...)
+	return cmd.Run()
 }
