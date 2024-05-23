@@ -1,6 +1,8 @@
 package utils
 
-import "path/filepath"
+import (
+	"path/filepath"
+)
 
 func PrefixEnvVars(prefix, name string) []string {
 	return []string{prefix + "_" + name}
