@@ -2,67 +2,72 @@ package nmgr
 
 import (
 	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
-	"io"
+	"math/big"
 	"net/http"
 	"os"
 	"os/exec"
 	"time"
 
-	"github.com/tokamak-network/tokamak-trunks/utils"
-
-	"github.com/ethereum-optimism/optimism/op-chain-ops/state"
+	"github.com/ethereum-optimism/optimism/op-chain-ops/genesis"
+	"github.com/ethereum-optimism/optimism/op-service/jsonutil"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 var testBalance = hexutil.MustDecodeBig("0x200000000000000000000000000000000000000000000000000000000000000")
 
+type TypeGenesis string
+
 const (
-	l1GenesisName  = "l1-genesis"
-	l2GenesisName  = "l2-genesis"
-	rollupName     = "rollup"
-	addressesNaame = "addresses"
-	jwtName        = "jwt"
+	l1GenesisName  TypeGenesis = "l1-genesis"
+	l2GenesisName  TypeGenesis = "l2-genesis"
+	rollupName     TypeGenesis = "rollup"
+	addressesNaame TypeGenesis = "addresses"
+	jwtName        TypeGenesis = "jwt"
 )
 
 type NodeManager interface {
 	Start() error
 	Stop()
 	Destroy()
-	Faucet(accounts []common.Address)
-}
-
-type nodeInfo struct {
-	l1Genesis string
-	l2Genesis string
-	rollup    string
-	address   string
-	jwt       string
 }
 
 type BaseNodeManager struct {
-	infoDir  string
-	nodeInfo *nodeInfo
+	genesisDir string
 
-	L1Genesis *core.Genesis
-	L2Genesis *core.Genesis
-
-	DockerComposeFileDirPath string
+	*Config
 }
 
 func (b *BaseNodeManager) Start() error {
-	var addresses map[string]interface{}
-	utils.ReadJson(b.nodeInfo.address, &addresses)
+	if err := b.generateJWT(); err != nil {
+		return err
+	}
 
-	dir := b.DockerComposeFileDirPath
+	if err := b.generateL1Genesis(); err != nil {
+		return err
+	}
+
+	addresses, err := jsonutil.LoadJSON[map[string]interface{}](b.AddressFilePath)
+	if err != nil {
+		return err
+	}
+
+	dir := b.DockerComposeDirPath
 	env := []string{
-		fmt.Sprintf("L1_GENESIS_FILE_PATH=%s", b.nodeInfo.l1Genesis),
-		fmt.Sprintf("L2_GENESIS_FILE_PATH=%s", b.nodeInfo.l2Genesis),
-		fmt.Sprintf("ROLLUP_FILE_PATH=%s", b.nodeInfo.rollup),
-		fmt.Sprintf("JWT_SECRET_FILE_PATH=%s", b.nodeInfo.jwt),
-		fmt.Sprintf("L2OO_ADDRESS=%s", addresses["L2OutputOracleProxy"]),
+		fmt.Sprintf("L1_GENESIS_FILE_PATH=%s", b.getGenesisFilePath(l1GenesisName)),
+		fmt.Sprintf("L2_GENESIS_FILE_PATH=%s", b.getGenesisFilePath(l2GenesisName)),
+		fmt.Sprintf("ROLLUP_FILE_PATH=%s", b.getGenesisFilePath(rollupName)),
+		fmt.Sprintf("JWT_SECRET_FILE_PATH=%s", b.getGenesisFilePath(jwtName)),
+		fmt.Sprintf("L2OO_ADDRESS=%s", (*addresses)["L2OutputOracleProxy"]),
 	}
 
 	if err := runCommand(
@@ -73,6 +78,10 @@ func (b *BaseNodeManager) Start() error {
 		return err
 	}
 	if err := waitRPCServer("8545", time.Duration(10*time.Second)); err != nil {
+		return err
+	}
+
+	if err := b.generateL2Genesis(); err != nil {
 		return err
 	}
 
@@ -100,128 +109,197 @@ func (b *BaseNodeManager) Destroy() {
 	// delInfoDir(b.infoDir)
 }
 
-func (b *BaseNodeManager) Faucet(accounts []common.Address) {
-	b.L1Genesis = faucet(b.L1Genesis, accounts)
-	b.L2Genesis = faucet(b.L2Genesis, accounts)
-
-	utils.WriteJson(b.nodeInfo.l1Genesis, b.L1Genesis)
-	utils.WriteJson(b.nodeInfo.l2Genesis, b.L2Genesis)
-}
-
 func NewBaseNodeManager(cfg *Config) (*BaseNodeManager, error) {
-	iDir, err := makeInfoDir()
+	gDir, err := makeGenesisDir()
 	if err != nil {
 		return nil, err
 	}
-	info, err := copyInfoFiles(iDir, cfg)
-	if err != nil {
-		return nil, err
-	}
-	l1Genesis := &core.Genesis{}
-	l2Genesis := &core.Genesis{}
-	utils.ReadJson(info.l1Genesis, l1Genesis)
-	utils.ReadJson(info.l2Genesis, l2Genesis)
 
 	return &BaseNodeManager{
-		infoDir:                  iDir,
-		nodeInfo:                 info,
-		DockerComposeFileDirPath: cfg.DockerComposeFileDirPath,
-		L1Genesis:                l1Genesis,
-		L2Genesis:                l2Genesis,
+		genesisDir: gDir,
+		Config:     cfg,
 	}, nil
 }
 
-func faucet(genesis *core.Genesis, accounts []common.Address) *core.Genesis {
-	db := state.NewMemoryStateDB(genesis)
-	for _, account := range accounts {
-		if !db.Exist(account) {
-			db.CreateAccount(account)
-		}
-		db.AddBalance(account, testBalance)
-	}
-	return db.Genesis()
-}
-
-func makeInfoDir() (string, error) {
-	h, err := os.UserHomeDir()
+func (b *BaseNodeManager) generateL1Genesis() error {
+	deployConfig, err := genesis.NewDeployConfig(b.DeployConfigFilePath)
 	if err != nil {
-		return "", err
+		return err
 	}
-	iDir := fmt.Sprintf("%s/%s", h, ".tokamak-trunks")
-	if _, err := os.Stat(iDir); os.IsNotExist(err) {
-		err := os.Mkdir(iDir, 0755)
-		if err != nil {
-			return "", err
-		}
+
+	deployments, err := genesis.NewL1Deployments(b.AddressFilePath)
+	if err != nil {
+		return err
 	}
-	return iDir, nil
+
+	if deployments != nil {
+		deployConfig.SetDeployments(deployments)
+	}
+
+	if err := deployConfig.Check(); err != nil {
+		return err
+	}
+
+	dump, err := genesis.NewStateDump(b.AllocFilePath)
+	if err != nil {
+		return err
+	}
+
+	if len(b.FaucetAccounts) > 0 {
+		fmt.Println("faucet test accounts")
+	}
+
+	l1Genesis, err := genesis.BuildL1DeveloperGenesis(deployConfig, dump, deployments)
+	if err != nil {
+		return err
+	}
+
+	outputFile := b.getGenesisFilePath(l1GenesisName)
+
+	return jsonutil.WriteJSON(outputFile, l1Genesis, 0o666)
 }
 
-func delInfoDir(infoDir string) error {
-	if _, err := os.Stat(infoDir); err == nil {
-		err := os.RemoveAll(infoDir)
+func (b *BaseNodeManager) generateL2Genesis() error {
+	deployConfig, err := genesis.NewDeployConfig(b.DeployConfigFilePath)
+	if err != nil {
+		return err
+	}
+
+	deployments, err := genesis.NewL1Deployments(b.AddressFilePath)
+	if err != nil {
+		return err
+	}
+	deployConfig.SetDeployments(deployments)
+
+	var l1StartBlock *types.Block
+	client, err := ethclient.Dial("http://localhost:8545")
+	if err != nil {
+		return err
+	}
+
+	if deployConfig.L1StartingBlockTag == nil {
+		l1StartBlock, err = client.BlockByNumber(context.Background(), nil)
+		if err != nil {
+			return err
+		}
+		tag := rpc.BlockNumberOrHashWithHash(l1StartBlock.Hash(), true)
+		deployConfig.L1StartingBlockTag = (*genesis.MarshalableRPCBlockNumberOrHash)(&tag)
+	} else if deployConfig.L1StartingBlockTag.BlockHash != nil {
+		l1StartBlock, err = client.BlockByHash(context.Background(), *deployConfig.L1StartingBlockTag.BlockHash)
+		if err != nil {
+			return err
+		}
+	} else if deployConfig.L1StartingBlockTag.BlockNumber != nil {
+		l1StartBlock, err = client.BlockByNumber(context.Background(), big.NewInt(deployConfig.L1StartingBlockTag.BlockNumber.Int64()))
 		if err != nil {
 			return err
 		}
 	}
+
+	if l1StartBlock == nil {
+		return errors.New("no starting L1 block")
+	}
+
+	if err := deployConfig.Check(); err != nil {
+		return err
+	}
+
+	l2Genesis, err := genesis.BuildL2Genesis(deployConfig, l1StartBlock)
+	if err != nil {
+		return err
+	}
+
+	if len(b.FaucetAccounts) > 0 {
+		fmt.Println("faucet test accounts")
+	}
+
+	l2GenesisBlock := l2Genesis.ToBlock()
+	rollupConfig, err := deployConfig.RollupConfig(l1StartBlock, l2GenesisBlock.Hash(), l2GenesisBlock.Number().Uint64())
+	if err != nil {
+		return err
+	}
+	if err := rollupConfig.Check(); err != nil {
+		return err
+	}
+
+	outputL2Genesis := b.getGenesisFilePath(l2GenesisName)
+	if err := jsonutil.WriteJSON(outputL2Genesis, l2Genesis, 0o666); err != nil {
+		return err
+	}
+
+	outputRollup := b.getGenesisFilePath(rollupName)
+	return jsonutil.WriteJSON(outputRollup, rollupConfig, 0o666)
+}
+
+func (b *BaseNodeManager) generateJWT() error {
+	randomBytes := make([]byte, 32)
+	_, err := rand.Read(randomBytes)
+	if err != nil {
+		return err
+	}
+
+	hexString := hex.EncodeToString(randomBytes)
+
+	outputFile := b.getGenesisFilePath(jwtName)
+	file, err := os.Create(outputFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	_, err = file.Write([]byte(hexString))
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-func copyInfoFiles(dir string, cfg *Config) (*nodeInfo, error) {
-	dstL1 := fmt.Sprintf("%s/%s.json", dir, l1GenesisName)
-	dstL2 := fmt.Sprintf("%s/%s.json", dir, l2GenesisName)
-	dstRollup := fmt.Sprintf("%s/%s.json", dir, rollupName)
-	dstAddr := fmt.Sprintf("%s/%s.json", dir, addressesNaame)
-	dstJwt := fmt.Sprintf("%s/%s.txt", dir, jwtName)
+func (b *BaseNodeManager) Faucet(accounts []common.Address) {
+	// b.L1Genesis = faucet(b.L1Genesis, accounts)
+	// b.L2Genesis = faucet(b.L2Genesis, accounts)
 
-	if err := copyFile(cfg.L1GenesisFilePath, dstL1); err != nil {
-		return nil, err
-	}
-	if err := copyFile(cfg.L2GenesisFilePath, dstL2); err != nil {
-		return nil, err
-	}
-	if err := copyFile(cfg.RollupConfigFilePath, dstRollup); err != nil {
-		return nil, err
-	}
-	if err := copyFile(cfg.AddressFilePath, dstAddr); err != nil {
-		return nil, err
-	}
-	if err := copyFile(cfg.JwtFilePath, dstJwt); err != nil {
-		return nil, err
-	}
-
-	return &nodeInfo{
-		l1Genesis: dstL1,
-		l2Genesis: dstL2,
-		rollup:    dstRollup,
-		address:   dstAddr,
-		jwt:       dstJwt,
-	}, nil
+	// utils.WriteJson(b.nodeInfo.l1Genesis, b.L1Genesis)
+	// utils.WriteJson(b.nodeInfo.l2Genesis, b.L2Genesis)
 }
 
-func copyFile(src, dst string) error {
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer srcFile.Close()
+func faucet(genesis *core.Genesis, accounts []common.Address) *core.Genesis {
+	// db := state.NewMemoryStateDB(genesis)
+	// for _, account := range accounts {
+	// 	if !db.Exist(account) {
+	// 		db.CreateAccount(account)
+	// 	}
+	// 	db.AddBalance(account, testBalance)
+	// }
+	// return db.Genesis()
+	return nil
+}
 
-	dstFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer dstFile.Close()
+func (b *BaseNodeManager) getGenesisFilePath(name TypeGenesis) string {
+	return fmt.Sprintf("%s/%s", b.genesisDir, name)
+}
 
-	_, err = io.Copy(dstFile, srcFile)
+func makeGenesisDir() (string, error) {
+	h, err := os.UserHomeDir()
 	if err != nil {
-		return err
+		return "", err
 	}
-
-	err = dstFile.Sync()
-	if err != nil {
-		return err
+	gDir := fmt.Sprintf("%s/%s", h, ".tokamak-trunks")
+	if _, err := os.Stat(gDir); os.IsNotExist(err) {
+		err := os.Mkdir(gDir, 0755)
+		if err != nil {
+			return "", err
+		}
 	}
+	return gDir, nil
+}
 
+func delGenesisDir(gDir string) error {
+	if _, err := os.Stat(gDir); err == nil {
+		err := os.RemoveAll(gDir)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

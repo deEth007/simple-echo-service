@@ -1,25 +1,24 @@
 package nmgr
 
 import (
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/tokamak-network/tokamak-trunks/utils"
 )
 
 type Config struct {
-	DockerComposeFileDirPath string
-	L1GenesisFilePath        string
-	L2GenesisFilePath        string
-	RollupConfigFilePath     string
-	AddressFilePath          string
-	JwtFilePath              string
+	DockerComposeDirPath string
+	DeployConfigFilePath string
+	AddressFilePath      string
+	AllocFilePath        string
+	FaucetAccounts       []common.Address
 }
 
-func NewConfig(cfg CLIConfig) *Config {
+func NewConfig(cfg CLIConfig, accounts ...common.Address) *Config {
 	return &Config{
-		DockerComposeFileDirPath: utils.ConvertToAbsPath(cfg.DockerComposeFileDirPath),
-		L1GenesisFilePath:        utils.ConvertToAbsPath(cfg.L1GenesisFilePath),
-		L2GenesisFilePath:        utils.ConvertToAbsPath(cfg.L2GenesisFilePath),
-		RollupConfigFilePath:     utils.ConvertToAbsPath(cfg.RollupConfigFilePath),
-		AddressFilePath:          utils.ConvertToAbsPath(cfg.AddressFilePath),
-		JwtFilePath:              utils.ConvertToAbsPath(cfg.JwtSecretFilePath),
+		DockerComposeDirPath: utils.ConvertToAbsPath(cfg.DockerComposeDirPath),
+		DeployConfigFilePath: utils.ConvertToAbsPath(cfg.DeployConfigFilePath),
+		AddressFilePath:      utils.ConvertToAbsPath(cfg.AddressFilePath),
+		AllocFilePath:        utils.ConvertToAbsPath(cfg.AllocFilePath),
+		FaucetAccounts:       accounts,
 	}
 }
