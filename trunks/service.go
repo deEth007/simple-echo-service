@@ -46,12 +46,11 @@ func NewService(cfg *CLIConfig) (*TrunksErvice, error) {
 	if cfg.NodeManagerEnable {
 		var err error
 		svc.NodeMgr, err = nmgr.NewBaseNodeManager(
-			nmgr.NewConfig(cfg.NodeMgr),
+			nmgr.NewConfig(cfg.NodeMgr, testAccount...),
 		)
 		if err != nil {
 			return nil, err
 		}
-		// svc.NodeMgr.Faucet(testAccount)
 	}
 	return &svc, nil
 }

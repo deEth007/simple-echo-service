@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/ethereum-optimism/optimism/op-chain-ops/genesis"
+	"github.com/ethereum-optimism/optimism/op-chain-ops/state"
 	"github.com/ethereum-optimism/optimism/op-service/jsonutil"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -145,13 +145,13 @@ func (b *BaseNodeManager) generateL1Genesis() error {
 		return err
 	}
 
-	if len(b.FaucetAccounts) > 0 {
-		fmt.Println("faucet test accounts")
-	}
-
 	l1Genesis, err := genesis.BuildL1DeveloperGenesis(deployConfig, dump, deployments)
 	if err != nil {
 		return err
+	}
+
+	if len(b.FaucetAccounts) > 0 {
+		l1Genesis = b.faucet(l1Genesis)
 	}
 
 	outputFile := b.getGenesisFilePath(l1GenesisName)
@@ -210,7 +210,7 @@ func (b *BaseNodeManager) generateL2Genesis() error {
 	}
 
 	if len(b.FaucetAccounts) > 0 {
-		fmt.Println("faucet test accounts")
+		l2Genesis = b.faucet(l2Genesis)
 	}
 
 	l2GenesisBlock := l2Genesis.ToBlock()
@@ -254,24 +254,15 @@ func (b *BaseNodeManager) generateJWT() error {
 	return nil
 }
 
-func (b *BaseNodeManager) Faucet(accounts []common.Address) {
-	// b.L1Genesis = faucet(b.L1Genesis, accounts)
-	// b.L2Genesis = faucet(b.L2Genesis, accounts)
-
-	// utils.WriteJson(b.nodeInfo.l1Genesis, b.L1Genesis)
-	// utils.WriteJson(b.nodeInfo.l2Genesis, b.L2Genesis)
-}
-
-func faucet(genesis *core.Genesis, accounts []common.Address) *core.Genesis {
-	// db := state.NewMemoryStateDB(genesis)
-	// for _, account := range accounts {
-	// 	if !db.Exist(account) {
-	// 		db.CreateAccount(account)
-	// 	}
-	// 	db.AddBalance(account, testBalance)
-	// }
-	// return db.Genesis()
-	return nil
+func (b *BaseNodeManager) faucet(genesis *core.Genesis) *core.Genesis {
+	db := state.NewMemoryStateDB(genesis)
+	for _, account := range b.FaucetAccounts {
+		if !db.Exist(account) {
+			db.CreateAccount(account)
+		}
+		db.AddBalance(account, testBalance)
+	}
+	return db.Genesis()
 }
 
 func (b *BaseNodeManager) getGenesisFilePath(name TypeGenesis) string {
