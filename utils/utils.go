@@ -16,14 +16,20 @@ func ConvertToAbsPath(path string) string {
 	return absPath
 }
 
-func ReadJsonUnknown(path string) map[string]interface{} {
+func ReadJson[T any](path string, data *T) {
 	jsonFile, _ := os.Open(path)
 	defer jsonFile.Close()
 
 	byteValue, _ := io.ReadAll(jsonFile)
 
-	var result map[string]interface{}
+	json.Unmarshal(byteValue, data)
+}
 
-	json.Unmarshal(byteValue, &result)
-	return result
+func WriteJson[T any](path string, data T) {
+	file, _ := os.Create(path)
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	encoder.Encode(data)
 }

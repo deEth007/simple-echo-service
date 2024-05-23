@@ -46,19 +46,17 @@ type BaseNodeManager struct {
 	infoDir  string
 	nodeInfo *nodeInfo
 
-	// L1Genesis *core.Genesis
-	// L2Genesis *core.Genesis
+	L1Genesis *core.Genesis
+	L2Genesis *core.Genesis
 
-	config *Config
+	DockerComposeFileDirPath string
 }
 
 func (b *BaseNodeManager) Start() error {
-	if err := b.copyInfoFiles(); err != nil {
-		return err
-	}
+	var addresses map[string]interface{}
+	utils.ReadJson(b.nodeInfo.address, &addresses)
 
-	addresses := utils.ReadJsonUnknown(b.nodeInfo.address)
-
+	dir := b.DockerComposeFileDirPath
 	env := []string{
 		fmt.Sprintf("L1_GENESIS_FILE_PATH=%s", b.nodeInfo.l1Genesis),
 		fmt.Sprintf("L2_GENESIS_FILE_PATH=%s", b.nodeInfo.l2Genesis),
@@ -66,7 +64,6 @@ func (b *BaseNodeManager) Start() error {
 		fmt.Sprintf("JWT_SECRET_FILE_PATH=%s", b.nodeInfo.jwt),
 		fmt.Sprintf("L2OO_ADDRESS=%s", addresses["L2OutputOracleProxy"]),
 	}
-	dir := b.config.DockerComposeFileDirPath
 
 	if err := runCommand(
 		dir, env, "docker", "compose", "up", "-d", "l1"); err != nil {
@@ -104,42 +101,11 @@ func (b *BaseNodeManager) Destroy() {
 }
 
 func (b *BaseNodeManager) Faucet(accounts []common.Address) {
-	// b.L1Genesis = faucet(b.L1Genesis, accounts)
-	// b.L2Genesis = faucet(b.L2Genesis, accounts)
-}
+	b.L1Genesis = faucet(b.L1Genesis, accounts)
+	b.L2Genesis = faucet(b.L2Genesis, accounts)
 
-func (b *BaseNodeManager) copyInfoFiles() error {
-	dstL1 := fmt.Sprintf("%s/%s.json", b.infoDir, l1GenesisName)
-	dstL2 := fmt.Sprintf("%s/%s.json", b.infoDir, l2GenesisName)
-	dstRollup := fmt.Sprintf("%s/%s.json", b.infoDir, rollupName)
-	dstAddr := fmt.Sprintf("%s/%s.json", b.infoDir, addressesNaame)
-	dstJwt := fmt.Sprintf("%s/%s.txt", b.infoDir, jwtName)
-
-	if err := copyFile(b.config.L1GenesisFilePath, dstL1); err != nil {
-		return err
-	}
-	if err := copyFile(b.config.L2GenesisFilePath, dstL2); err != nil {
-		return err
-	}
-	if err := copyFile(b.config.RollupConfigFilePath, dstRollup); err != nil {
-		return err
-	}
-	if err := copyFile(b.config.AddressFilePath, dstAddr); err != nil {
-		return err
-	}
-	if err := copyFile(b.config.JwtFilePath, dstJwt); err != nil {
-		return err
-	}
-
-	b.nodeInfo = &nodeInfo{
-		l1Genesis: dstL1,
-		l2Genesis: dstL2,
-		rollup:    dstRollup,
-		address:   dstAddr,
-		jwt:       dstJwt,
-	}
-
-	return nil
+	utils.WriteJson(b.nodeInfo.l1Genesis, b.L1Genesis)
+	utils.WriteJson(b.nodeInfo.l2Genesis, b.L2Genesis)
 }
 
 func NewBaseNodeManager(cfg *Config) (*BaseNodeManager, error) {
@@ -147,9 +113,21 @@ func NewBaseNodeManager(cfg *Config) (*BaseNodeManager, error) {
 	if err != nil {
 		return nil, err
 	}
+	info, err := copyInfoFiles(iDir, cfg)
+	if err != nil {
+		return nil, err
+	}
+	l1Genesis := &core.Genesis{}
+	l2Genesis := &core.Genesis{}
+	utils.ReadJson(info.l1Genesis, l1Genesis)
+	utils.ReadJson(info.l2Genesis, l2Genesis)
+
 	return &BaseNodeManager{
-		infoDir: iDir,
-		config:  cfg,
+		infoDir:                  iDir,
+		nodeInfo:                 info,
+		DockerComposeFileDirPath: cfg.DockerComposeFileDirPath,
+		L1Genesis:                l1Genesis,
+		L2Genesis:                l2Genesis,
 	}, nil
 }
 
@@ -187,6 +165,38 @@ func delInfoDir(infoDir string) error {
 		}
 	}
 	return nil
+}
+
+func copyInfoFiles(dir string, cfg *Config) (*nodeInfo, error) {
+	dstL1 := fmt.Sprintf("%s/%s.json", dir, l1GenesisName)
+	dstL2 := fmt.Sprintf("%s/%s.json", dir, l2GenesisName)
+	dstRollup := fmt.Sprintf("%s/%s.json", dir, rollupName)
+	dstAddr := fmt.Sprintf("%s/%s.json", dir, addressesNaame)
+	dstJwt := fmt.Sprintf("%s/%s.txt", dir, jwtName)
+
+	if err := copyFile(cfg.L1GenesisFilePath, dstL1); err != nil {
+		return nil, err
+	}
+	if err := copyFile(cfg.L2GenesisFilePath, dstL2); err != nil {
+		return nil, err
+	}
+	if err := copyFile(cfg.RollupConfigFilePath, dstRollup); err != nil {
+		return nil, err
+	}
+	if err := copyFile(cfg.AddressFilePath, dstAddr); err != nil {
+		return nil, err
+	}
+	if err := copyFile(cfg.JwtFilePath, dstJwt); err != nil {
+		return nil, err
+	}
+
+	return &nodeInfo{
+		l1Genesis: dstL1,
+		l2Genesis: dstL2,
+		rollup:    dstRollup,
+		address:   dstAddr,
+		jwt:       dstJwt,
+	}, nil
 }
 
 func copyFile(src, dst string) error {
