@@ -28,11 +28,12 @@ var testBalance = hexutil.MustDecodeBig("0x2000000000000000000000000000000000000
 type TypeGenesis string
 
 const (
-	l1GenesisName  TypeGenesis = "l1-genesis"
-	l2GenesisName  TypeGenesis = "l2-genesis"
-	rollupName     TypeGenesis = "rollup"
-	addressesNaame TypeGenesis = "addresses"
-	jwtName        TypeGenesis = "jwt"
+	l1GenesisName    TypeGenesis = "l1-genesis"
+	l2GenesisName    TypeGenesis = "l2-genesis"
+	rollupName       TypeGenesis = "rollup"
+	addressesNaame   TypeGenesis = "addresses"
+	jwtName          TypeGenesis = "jwt"
+	deployConfigName TypeGenesis = "deploy-config"
 )
 
 type NodeManager interface {
@@ -49,6 +50,10 @@ type BaseNodeManager struct {
 
 func (b *BaseNodeManager) Start() error {
 	if err := b.generateJWT(); err != nil {
+		return err
+	}
+
+	if err := b.updateTimestamp(); err != nil {
 		return err
 	}
 
@@ -122,7 +127,8 @@ func NewBaseNodeManager(cfg *Config) (*BaseNodeManager, error) {
 }
 
 func (b *BaseNodeManager) generateL1Genesis() error {
-	deployConfig, err := genesis.NewDeployConfig(b.DeployConfigFilePath)
+	configPath := b.getGenesisFilePath(deployConfigName)
+	deployConfig, err := genesis.NewDeployConfig(configPath)
 	if err != nil {
 		return err
 	}
@@ -160,7 +166,8 @@ func (b *BaseNodeManager) generateL1Genesis() error {
 }
 
 func (b *BaseNodeManager) generateL2Genesis() error {
-	deployConfig, err := genesis.NewDeployConfig(b.DeployConfigFilePath)
+	configPath := b.getGenesisFilePath(deployConfigName)
+	deployConfig, err := genesis.NewDeployConfig(configPath)
 	if err != nil {
 		return err
 	}
@@ -359,4 +366,20 @@ func waitRPCServer(port string, timeout time.Duration) error {
 	case <-time.After(timeout):
 		return fmt.Errorf("server did not reply after %v", timeout)
 	}
+}
+
+func (b *BaseNodeManager) updateTimestamp() error {
+	deployConfig, err := jsonutil.LoadJSON[map[string]interface{}](b.DeployConfigFilePath)
+	if err != nil {
+		return err
+	}
+
+	currentTime := time.Now()
+	unixTime := currentTime.Unix()
+	hexTime := fmt.Sprintf("0x%x", unixTime)
+	(*deployConfig)["l1GenesisBlockTimestamp"] = hexTime
+
+	output := b.getGenesisFilePath(deployConfigName)
+
+	return jsonutil.WriteJSON(output, *deployConfig, 0o666)
 }
