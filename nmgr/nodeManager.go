@@ -23,7 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-var testBalance = hexutil.MustDecodeBig("0x200000000000000000000000000000000000000000000000000000000000000")
+var testBalance = hexutil.MustDecodeBig("0x8AC7230489E80000")
 
 type TypeGenesis string
 
@@ -39,11 +39,12 @@ const (
 type NodeManager interface {
 	Start() error
 	Stop()
-	Destroy()
+	Destroy() error
 }
 
 type BaseNodeManager struct {
 	genesisDir string
+	env        []string
 
 	*Config
 }
@@ -74,6 +75,7 @@ func (b *BaseNodeManager) Start() error {
 		fmt.Sprintf("JWT_SECRET_FILE_PATH=%s", b.getGenesisFilePath(jwtName)),
 		fmt.Sprintf("L2OO_ADDRESS=%s", (*addresses)["L2OutputOracleProxy"]),
 	}
+	b.env = env
 
 	if err := runCommand(
 		dir, env, "docker", "compose", "up", "-d", "l1"); err != nil {
@@ -110,8 +112,21 @@ func (b *BaseNodeManager) Start() error {
 }
 
 func (b *BaseNodeManager) Stop() {}
-func (b *BaseNodeManager) Destroy() {
-	// delInfoDir(b.infoDir)
+
+func (b *BaseNodeManager) Destroy() error {
+	dir := b.DockerComposeDirPath
+
+	if err := runCommand(
+		dir, b.env, "docker", "compose", "rm"); err != nil {
+		return err
+	}
+
+	if err := runCommand(
+		dir, b.env, "docker", "volume", "prune", "--all"); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func NewBaseNodeManager(cfg *Config) (*BaseNodeManager, error) {

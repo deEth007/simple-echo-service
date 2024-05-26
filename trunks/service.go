@@ -2,28 +2,18 @@ package trunks
 
 import (
 	"log"
+	"math/big"
+	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/tokamak-network/tokamak-trunks/nmgr"
 	"github.com/urfave/cli/v2"
 )
 
-// this will be deleted
-var testAccount = []common.Address{
-	common.HexToAddress("0x3cBb18D55249d2F3e3e99385d12Be29dFfAeE79a"),
-	common.HexToAddress("0x3cBb18D55249d2F3e3e99385d12Be29dFfAeE79a"),
-	common.HexToAddress("0x7544A2b1B60b10c398442B8de947e421007c72d3"),
-	common.HexToAddress("0xa9327f67F1dD7f00b335f9CfB64BEc70D36Ed0cE"),
-	common.HexToAddress("0xA3401EdF55bFFa2832b18EAd97f84E3e94AE4EB1"),
-	common.HexToAddress("0x9E628CaAd7A6dD3ce48E78812241B41BdbeF6244"),
-	common.HexToAddress("0x92546dE8ebC70E236C8F27f0B0aE254309B84332"),
-	common.HexToAddress("0xe9b04f9a46d1C73Cf501966B393935DAB639254b"),
-	common.HexToAddress("0xa5Ba0109De7BE1a3E89D8eF0430104717D7879bf"),
-	common.HexToAddress("0xA961B0D6dcE82dB098cF70A42A14Add3eE3Db2D5"),
-}
-
 type TrunksErvice struct {
 	NodeMgr nmgr.NodeManager
+	Trunks  *Trunks
 }
 
 func Main() cli.ActionFunc {
@@ -43,15 +33,43 @@ func Main() cli.ActionFunc {
 
 func NewService(cfg *CLIConfig) (*TrunksErvice, error) {
 	var svc TrunksErvice
+
+	transferAccounts := GenerateAccounts(1000)
+	depositAccounts := GenerateAccounts(1000)
+	WithdrawalAccounts := GenerateAccounts(1000)
+
+	allAddress := []common.Address{}
+	allAddress = append(allAddress, transferAccounts.GetAddresses()...)
+	allAddress = append(allAddress, depositAccounts.GetAddresses()...)
+	allAddress = append(allAddress, WithdrawalAccounts.GetAddresses()...)
+
 	if cfg.NodeManagerEnable {
 		var err error
 		svc.NodeMgr, err = nmgr.NewBaseNodeManager(
-			nmgr.NewConfig(cfg.NodeMgr, testAccount...),
+			nmgr.NewConfig(cfg.NodeMgr, allAddress...),
 		)
 		if err != nil {
 			return nil, err
 		}
 	}
+
+	trunks := &Trunks{
+		wg:    new(sync.WaitGroup),
+		L1RPC: "http://localhost:8545",
+		L2RPC: "http://localhost:9545",
+
+		L1ChainId: big.NewInt(900),
+		L2ChainId: big.NewInt(901),
+
+		TransferAccounts:   transferAccounts,
+		DepositAccounts:    depositAccounts,
+		WithdrawalAccounts: WithdrawalAccounts,
+
+		L1StandardBridgeAddress: common.HexToAddress("0x1c23A6d89F95ef3148BCDA8E242cAb145bf9c0E4"),
+	}
+
+	svc.Trunks = trunks
+
 	return &svc, nil
 }
 
@@ -62,6 +80,13 @@ func (ts *TrunksErvice) Start() error {
 			return err
 		}
 	}
+	time.Sleep(10 * time.Second)
+
+	ts.Trunks.wg.Add(2)
+	go ts.Trunks.CallAttacker(CallTargeter)
+	go ts.Trunks.TransferAttacker(TransferTageter)
+
+	ts.Trunks.wg.Wait()
 	return nil
 }
 

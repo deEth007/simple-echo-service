@@ -1,12 +1,10 @@
 package trunks
 
 import (
-	"context"
 	"crypto/ecdsa"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 type Account struct {
@@ -40,21 +38,7 @@ func (a *Accounts) GetAddresses() []common.Address {
 	return addresses
 }
 
-func (a *Accounts) InitNonceCache(client *ethclient.Client) error {
-	NonceCache = map[string]uint64{}
-	for _, account := range a.List {
-		nonce, err := client.PendingNonceAt(context.Background(), account.Address)
-		if err != nil {
-			return err
-		}
-		NonceCache[account.Address.Hex()] = nonce
-	}
-	return nil
-}
-
 func GetAddress(privKey *ecdsa.PrivateKey) common.Address {
 	publicKey := privKey.PublicKey
 	return crypto.PubkeyToAddress(publicKey)
 }
-
-var NonceCache map[string]uint64
