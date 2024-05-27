@@ -122,7 +122,7 @@ func (b *BaseNodeManager) Destroy() error {
 	}
 
 	if err := runCommand(
-		dir, b.env, "docker", "volume", "prune", "--all"); err != nil {
+		dir, b.env, "docker", "volume", "prune", "-f", "--all"); err != nil {
 		return err
 	}
 

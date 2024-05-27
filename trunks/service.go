@@ -90,4 +90,8 @@ func (ts *TrunksErvice) Start() error {
 	return nil
 }
 
-func (ts *TrunksErvice) Stop() {}
+func (ts *TrunksErvice) Stop() {
+	// ts.NodeMgr.Destroy()
+	ChainReporter.RecordTPS(big.NewInt(2))
+	ChainReporter.PrintReport()
+}

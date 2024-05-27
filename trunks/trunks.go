@@ -36,7 +36,7 @@ type Trunks struct {
 	outputFileName string
 }
 
-type TxReporter func(*vegeta.Result, *ethclient.Client) *vegeta.Result
+type TxConfirm func(*vegeta.Result, *ethclient.Client) *vegeta.Result
 
 func (t *Trunks) Start() {
 	opts := &TxOpts{
@@ -44,9 +44,9 @@ func (t *Trunks) Start() {
 		TargetChainId: t.L2ChainId,
 		Accounts:      t.WithdrawalAccounts,
 	}
-	pace := vegeta.Rate{Freq: 100, Per: time.Second}
+	pace := vegeta.Rate{Freq: 3000, Per: time.Second}
 	duration := time.Duration(2 * time.Second)
-	t.TransactionAttack(TranferReporter, TransactionTageter, pace, duration, opts)
+	t.TransactionAttack(TranferConfirm, TransactionTageter, pace, duration, opts)
 }
 
 func (t *Trunks) CallAttack(tageter CallTargeterFn) error {
@@ -75,14 +75,13 @@ func (t *Trunks) CallAttack(tageter CallTargeterFn) error {
 	return err
 }
 
-func (t *Trunks) TransactionAttack(txReporter TxReporter, tageter TransactionTageterFn, pace vegeta.Pacer, duration time.Duration, opts *TxOpts) {
+func (t *Trunks) TransactionAttack(txConfirm TxConfirm, tageter TransactionTageterFn, pace vegeta.Pacer, duration time.Duration, opts *TxOpts) {
 	client, _ := ethclient.Dial(opts.TargetRPC)
 	attacker := vegeta.NewAttacker()
 	tgter := tageter(opts)
 
 	file, _ := os.Create(t.outputFileName)
 	defer file.Close()
-	// encoder := vegeta.NewEncoder(file)
 	var metrics vegeta.Metrics
 	var txSuccess uint16
 
@@ -97,8 +96,10 @@ func (t *Trunks) TransactionAttack(txReporter TxReporter, tageter TransactionTag
 
 			go func(rr *vegeta.Result) {
 				defer sem.Release(1)
-				r := txReporter(rr, client)
+				r := txConfirm(rr, client)
+				mu.Lock()
 				metrics.Add(r)
+				mu.Unlock()
 				if r.Code == 1 {
 					mu.Lock()
 					txSuccess++
@@ -118,7 +119,7 @@ func (t *Trunks) TransactionAttack(txReporter TxReporter, tageter TransactionTag
 	reporter.Report(file)
 }
 
-func TranferReporter(result *vegeta.Result, client *ethclient.Client) *vegeta.Result {
+func TranferConfirm(result *vegeta.Result, client *ethclient.Client) *vegeta.Result {
 	r := result
 	body := map[string]interface{}{}
 	json.Unmarshal(r.Body, &body)
@@ -139,6 +140,12 @@ func TranferReporter(result *vegeta.Result, client *ethclient.Client) *vegeta.Re
 		} else {
 			blockNumber = receipt.BlockNumber
 			r.Code = uint16(receipt.Status)
+			ChainReporter.RecordStartToLastBlock(receipt)
+			ChainReporter.RecordL1GasUsed(receipt)
+			ChainReporter.RecordL1GasFee(receipt)
+			ChainReporter.RecordL2GasUsed(receipt)
+			ChainReporter.RecordL2GasFee(receipt)
+			ChainReporter.RecordConfirmRequest()
 			fmt.Printf("receipt: %+v\n", receipt)
 			break
 		}
