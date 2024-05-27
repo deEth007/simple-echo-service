@@ -10,6 +10,7 @@ import (
 	"time"
 
 	vegeta "github.com/tsenart/vegeta/v12/lib"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -29,17 +30,49 @@ type Trunks struct {
 	DepositAccounts    *Accounts
 	WithdrawalAccounts *Accounts
 
-	L1StandardBridgeAddress common.Address
+	L1StandardBridgeAddress string
+	L2StandardBridgeAddress string
 }
 
-func (t *Trunks) CallAttacker(tageter CallTargeterFn) error {
+type WrapMetrics struct {
+	txSuccess uint64
+	metrics   *vegeta.Metrics
+}
+
+func (m *WrapMetrics) Add(r *vegeta.Result) {
+	m.metrics.Add(r)
+	// if r.Code == 1 {
+	m.txSuccess++
+	// }
+}
+
+func (m *WrapMetrics) Close() {
+	fmt.Println("metrics close")
+	m.metrics.Close()
+	m.metrics.Success = float64(m.txSuccess) / float64(m.metrics.Requests)
+}
+
+type TxReporter func(*vegeta.Result, *ethclient.Client) *vegeta.Result
+
+func (t *Trunks) Start() {
+	opts := &TxOpts{
+		TargetRPC:     t.L2RPC,
+		TargetChainId: t.L2ChainId,
+		Accounts:      t.WithdrawalAccounts,
+	}
+	pace := vegeta.Rate{Freq: 100, Per: time.Second}
+	duration := time.Duration(5 * time.Second)
+	t.TransactionAttack(TranferReporter, TransactionTageter, pace, duration, opts)
+}
+
+func (t *Trunks) CallAttack(tageter CallTargeterFn) error {
 	rate := vegeta.Rate{Freq: 1000, Per: time.Second}
-	duration := 10 * time.Second
+	duration := 2 * time.Second
 	attacker := vegeta.NewAttacker()
 
 	tgter := tageter(t)
 	results := make(chan *vegeta.Result)
-	var metrics vegeta.Metrics
+	var metrics WrapMetrics
 
 	go func() {
 		for res := range results {
@@ -66,20 +99,14 @@ func (t *Trunks) CallAttacker(tageter CallTargeterFn) error {
 	return err
 }
 
-func (t *Trunks) TransferAttacker(tageter TrnasactionTageterFn) error {
-	rate := vegeta.Rate{Freq: 10, Per: time.Second}
-	duration := 10 * time.Second
-
-	client, err := ethclient.Dial(t.L2RPC)
-	if err != nil {
-		return err
-	}
-	attacker := vegeta.NewAttacker()
-
-	tgter := tageter(t, client)
+func (t *Trunks) TransactionAttack(txReporter TxReporter, tageter TransactionTageterFn, pace vegeta.Pacer, duration time.Duration, opts *TxOpts) {
 	results := make(chan *vegeta.Result)
-	var metrics vegeta.Metrics
 
+	client, _ := ethclient.Dial(opts.TargetRPC)
+	attacker := vegeta.NewAttacker()
+	tgter := tageter(opts)
+
+	var metrics WrapMetrics
 	go func() {
 		for res := range results {
 			metrics.Add(res)
@@ -87,54 +114,63 @@ func (t *Trunks) TransferAttacker(tageter TrnasactionTageterFn) error {
 		}
 	}()
 
-	file, err := os.Create("transfer_results.bin")
-	if err != nil {
-		return err
-	}
+	file, _ := os.Create("results.bin")
 	defer file.Close()
 	encoder := vegeta.NewEncoder(file)
 
-	for res := range attacker.Attack(tgter, rate, duration, "transfer") {
-		body := map[string]interface{}{}
-		json.Unmarshal(res.Body, &body)
-		fmt.Printf("res: %v\n", body)
-		txHash := common.HexToHash(body["result"].(string))
-		var blockNumber *big.Int
-		for {
-			receipt, err := client.TransactionReceipt(context.Background(), txHash)
-			if err != nil {
-				if err == ethereum.NotFound {
-					fmt.Println("Transaction is not yet mined")
-				} else {
-					fmt.Printf("Somthing error: %s\n", err)
-				}
-			} else {
-				blockNumber = receipt.BlockNumber
-				res.Code = uint16(receipt.Status)
-				fmt.Printf("receipt: %v\n", receipt)
-				break
-			}
-			time.Sleep(time.Second * 2)
+	sem := semaphore.NewWeighted(3)
+	t.wg.Add(1)
+	go func() {
+		for res := range attacker.Attack(tgter, pace, duration, "Transaction Attack") {
+			sem.Acquire(context.Background(), 1)
+			t.wg.Add(1)
+			go func(rr *vegeta.Result) {
+				defer sem.Release(1)
+				r := txReporter(rr, client)
+				encoder.Encode(r)
+				t.wg.Done()
+			}(res)
 		}
-		block, err := client.BlockByNumber(context.Background(), blockNumber)
-		if err != nil {
-			return err
-		}
-		blockTime := block.Time()
-		blockTimeToUnix := time.Unix(int64(blockTime), 0)
-
-		res.Latency = blockTimeToUnix.Sub(res.Timestamp)
-
-		results <- res
-		if err := encoder.Encode(res); err != nil {
-			return err
-		}
-	}
+		t.wg.Done()
+	}()
+	t.wg.Wait()
 	close(results)
-	t.wg.Done()
-	return nil
 }
 
-func (t *Trunks) DepositAttacker() {}
+func TranferReporter(result *vegeta.Result, client *ethclient.Client) *vegeta.Result {
+	r := result
+	body := map[string]interface{}{}
+	json.Unmarshal(r.Body, &body)
+	_, exist := body["result"]
+	if !exist {
+		return r
+	}
+	txHash := common.HexToHash(body["result"].(string))
+	var blockNumber *big.Int
+	for {
+		receipt, err := client.TransactionReceipt(context.Background(), txHash)
+		if err != nil {
+			if err == ethereum.NotFound {
+				fmt.Println("Transaction is not yet mined")
+			} else {
+				fmt.Printf("Somthing error: %s\n", err)
+			}
+		} else {
+			blockNumber = receipt.BlockNumber
+			r.Code = uint16(receipt.Status)
+			fmt.Printf("receipt: %+v\n", receipt)
+			break
+		}
+		time.Sleep(time.Second * 2)
+	}
+	block, err := client.BlockByNumber(context.Background(), blockNumber)
+	if err != nil {
+		return r
+	}
+	blockTime := block.Time()
+	blockTimeToUnix := time.Unix(int64(blockTime), 0)
 
-func (t *Trunks) WithdrawalAttacker() {}
+	r.Latency = blockTimeToUnix.Sub(r.Timestamp)
+
+	return r
+}

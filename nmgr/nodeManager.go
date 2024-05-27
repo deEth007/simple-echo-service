@@ -23,7 +23,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-var testBalance = hexutil.MustDecodeBig("0x8AC7230489E80000")
+var testBalance = hexutil.MustDecodeBig("0x200000000000000000000000000000000000000000000000000000000000000")
 
 type TypeGenesis string
 

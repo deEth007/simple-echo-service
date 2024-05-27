@@ -55,17 +55,18 @@ func NewService(cfg *CLIConfig) (*TrunksErvice, error) {
 
 	trunks := &Trunks{
 		wg:    new(sync.WaitGroup),
-		L1RPC: "http://localhost:8545",
-		L2RPC: "http://localhost:9545",
+		L1RPC: cfg.L1RPC,
+		L2RPC: cfg.L2RPC,
 
-		L1ChainId: big.NewInt(900),
-		L2ChainId: big.NewInt(901),
+		L1ChainId: new(big.Int).SetUint64(cfg.L1ChainId),
+		L2ChainId: new(big.Int).SetUint64(cfg.L2ChainId),
 
 		TransferAccounts:   transferAccounts,
 		DepositAccounts:    depositAccounts,
 		WithdrawalAccounts: WithdrawalAccounts,
 
-		L1StandardBridgeAddress: common.HexToAddress("0x1c23A6d89F95ef3148BCDA8E242cAb145bf9c0E4"),
+		L1StandardBridgeAddress: cfg.L1StandardBrige,
+		L2StandardBridgeAddress: cfg.L2StandardBrige,
 	}
 
 	svc.Trunks = trunks
@@ -82,11 +83,8 @@ func (ts *TrunksErvice) Start() error {
 	}
 	time.Sleep(10 * time.Second)
 
-	ts.Trunks.wg.Add(2)
-	go ts.Trunks.CallAttacker(CallTargeter)
-	go ts.Trunks.TransferAttacker(TransferTageter)
+	ts.Trunks.Start()
 
-	ts.Trunks.wg.Wait()
 	return nil
 }
 

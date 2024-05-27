@@ -8,9 +8,7 @@ import (
 
 	vegeta "github.com/tsenart/vegeta/v12/lib"
 
-	"github.com/ethereum-optimism/optimism/op-bindings/bindings"
-
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -23,7 +21,7 @@ var CALL_METHOD []string = []string{
 }
 
 type CallTargeterFn func(*Trunks) vegeta.Targeter
-type TrnasactionTageterFn func(*Trunks, *ethclient.Client) vegeta.Targeter
+type TransactionTageterFn func(*TxOpts) vegeta.Targeter
 
 func CallTargeter(trunks *Trunks) vegeta.Targeter {
 	roundRobin := -1
@@ -45,14 +43,22 @@ func CallTargeter(trunks *Trunks) vegeta.Targeter {
 	}
 }
 
-var value *big.Int = big.NewInt(1000000000000000000)
+var value *big.Int = big.NewInt(100000000000000000)
 
-func TransferTageter(trunks *Trunks, client *ethclient.Client) vegeta.Targeter {
+type TxOpts struct {
+	TargetRPC     string
+	TargetChainId *big.Int
+	Accounts      *Accounts
+	To            string
+}
+
+func TransactionTageter(opts *TxOpts) vegeta.Targeter {
 	roundRobin := -1
-	RPC := trunks.L2RPC
-	chainId := trunks.L2ChainId
+	RPC := opts.TargetRPC
+	chainId := opts.TargetChainId
+	client, _ := ethclient.Dial(opts.TargetRPC)
 	gasPrice, _ := client.SuggestGasPrice(context.Background())
-	accounts := trunks.TransferAccounts
+	accounts := opts.Accounts
 
 	return func(tgt *vegeta.Target) error {
 		if tgt == nil {
@@ -61,12 +67,19 @@ func TransferTageter(trunks *Trunks, client *ethclient.Client) vegeta.Targeter {
 		roundRobin = (roundRobin + 1) % len(accounts.List)
 
 		from := accounts.List[roundRobin]
-		to := accounts.List[(roundRobin+1)%len(accounts.List)]
+		var to common.Address
+		if opts.To == "" {
+			to = accounts.List[(roundRobin+1)%len(accounts.List)].Address
+		} else {
+			to = common.HexToAddress(opts.To)
+		}
+		fmt.Printf("%s\n", opts.To)
+		fmt.Printf("trasnfer from: %s, to: %s\n", from.Address.Hex(), to)
 
 		var data []byte
-		transferGas := uint64(21000)
+		transferGas := uint64(3000000)
 		nonce, _ := client.PendingNonceAt(context.Background(), from.Address)
-		tx := types.NewTransaction(nonce, to.Address, value, transferGas, gasPrice, data)
+		tx := types.NewTransaction(nonce, to, value, transferGas, gasPrice, data)
 
 		signedTx, _ := types.SignTx(tx, types.NewEIP155Signer(chainId), from.PrivKey)
 		rawTxBytes, _ := signedTx.MarshalBinary()
@@ -85,48 +98,46 @@ func TransferTageter(trunks *Trunks, client *ethclient.Client) vegeta.Targeter {
 	}
 }
 
-func DepositTageter(trunks *Trunks, client *ethclient.Client) vegeta.Targeter {
-	roundRobin := -1
-	RPC := trunks.L1RPC
-	chainId := trunks.L1ChainId
-	accounts := trunks.DepositAccounts
-	l1StandardBridgeAddress := trunks.L1StandardBridgeAddress
-	transactor, _ := bindings.NewL1StandardBridgeTransactor(l1StandardBridgeAddress, client)
+// func DepositTageter(trunks *Trunks, client *ethclient.Client) vegeta.Targeter {
+// 	roundRobin := -1
+// 	RPC := trunks.L1RPC
+// 	chainId := trunks.L1ChainId
+// 	accounts := trunks.DepositAccounts
+// 	l1StandardBridgeAddress := trunks.L1StandardBridgeAddress
+// 	transactor, _ := bindings.NewL1StandardBridgeTransactor(l1StandardBridgeAddress, client)
 
-	return func(tgt *vegeta.Target) error {
-		roundRobin = (roundRobin + 1) % len(accounts.List)
+// 	return func(tgt *vegeta.Target) error {
+// 		test, _ := ethclient.Dial(RPC)
+// 		roundRobin = (roundRobin + 1) % len(accounts.List)
 
-		sender := accounts.List[roundRobin]
-		balance, _ := client.BalanceAt(context.Background(), sender.Address, nil)
-		fmt.Printf("roundRobin: %d, %d\n", roundRobin, len(accounts.List))
-		fmt.Printf("sender: %s balance: %d\n", sender.Address.Hex(), balance)
-		nonce, _ := client.PendingNonceAt(context.Background(), sender.Address)
+// 		sender := accounts.List[roundRobin]
+// 		balance, _ := test.BalanceAt(context.Background(), sender.Address, nil)
+// 		nonce, _ := test.PendingNonceAt(context.Background(), sender.Address)
+// 		fmt.Printf("sender: %s balance: %d\n nonce: %d\n", sender.Address.Hex(), balance, nonce)
 
-		opts, _ := bind.NewKeyedTransactorWithChainID(sender.PrivKey, chainId)
-		opts.Value = value
-		opts.Nonce = new(big.Int).SetUint64(nonce)
-		opts.NoSend = true
+// 		opts, _ := bind.NewKeyedTransactorWithChainID(sender.PrivKey, chainId)
+// 		opts.Value = value
+// 		opts.Nonce = new(big.Int).SetUint64(nonce)
+// 		opts.NoSend = true
 
-		tx, _ := transactor.DepositETH(opts, uint32(300000), []byte{})
-		fmt.Printf("Transactopn : %v\n", tx)
-		rawTxBytes, err := tx.MarshalBinary()
-		fmt.Println(err)
-		rawTxHex := hex.EncodeToString(rawTxBytes)
-		body := fmt.Sprintf(`{"jsonrpc":"2.0","method":"eth_sendRawTransaction","params":["0x%s"],"id":1}`, rawTxHex)
+// 		tx, _ := transactor.DepositETH(opts, uint32(21000), []byte{})
+// 		rawTxBytes, _ := tx.MarshalBinary()
+// 		rawTxHex := hex.EncodeToString(rawTxBytes)
+// 		body := fmt.Sprintf(`{"jsonrpc":"2.0","method":"eth_sendRawTransaction","params":["0x%s"],"id":1}`, rawTxHex)
 
-		tgt.Method = "POST"
-		tgt.URL = RPC
-		tgt.Header = map[string][]string{
-			"Content-type": []string{"application/json"},
-		}
-		tgt.Body = []byte(body)
+// 		tgt.Method = "POST"
+// 		tgt.URL = RPC
+// 		tgt.Header = map[string][]string{
+// 			"Content-type": []string{"application/json"},
+// 		}
+// 		tgt.Body = []byte(body)
 
-		return nil
-	}
-}
+// 		return nil
+// 	}
+// }
 
-func WithrawTageter() vegeta.Targeter {
-	return func(t *vegeta.Target) error {
-		return nil
-	}
-}
+// func WithrawTageter() vegeta.Targeter {
+// 	return func(t *vegeta.Target) error {
+// 		return nil
+// 	}
+// }
