@@ -14,6 +14,7 @@ type CLIConfig struct {
 	L2ChainId         uint64
 	L1StandardBrige   string
 	L2StandardBrige   string
+	OutputFileName    string
 
 	NodeMgr nmgr.CLIConfig
 }
@@ -27,6 +28,7 @@ func NewCLIConfig(ctx *cli.Context) *CLIConfig {
 		L2ChainId:         ctx.Uint64(flags.L2ChainIdFlag.Name),
 		L1StandardBrige:   ctx.String(flags.L1StandardBrige.Name),
 		L2StandardBrige:   ctx.String(flags.L2StandardBrige.Name),
+		OutputFileName:    ctx.String(flags.OutputFileFlag.Name),
 		NodeMgr:           nmgr.ReadCLIConfig(ctx),
 	}
 }

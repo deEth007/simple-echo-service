@@ -32,24 +32,8 @@ type Trunks struct {
 
 	L1StandardBridgeAddress string
 	L2StandardBridgeAddress string
-}
 
-type WrapMetrics struct {
-	txSuccess uint64
-	metrics   *vegeta.Metrics
-}
-
-func (m *WrapMetrics) Add(r *vegeta.Result) {
-	m.metrics.Add(r)
-	// if r.Code == 1 {
-	m.txSuccess++
-	// }
-}
-
-func (m *WrapMetrics) Close() {
-	fmt.Println("metrics close")
-	m.metrics.Close()
-	m.metrics.Success = float64(m.txSuccess) / float64(m.metrics.Requests)
+	outputFileName string
 }
 
 type TxReporter func(*vegeta.Result, *ethclient.Client) *vegeta.Result
@@ -61,7 +45,7 @@ func (t *Trunks) Start() {
 		Accounts:      t.WithdrawalAccounts,
 	}
 	pace := vegeta.Rate{Freq: 100, Per: time.Second}
-	duration := time.Duration(5 * time.Second)
+	duration := time.Duration(2 * time.Second)
 	t.TransactionAttack(TranferReporter, TransactionTageter, pace, duration, opts)
 }
 
@@ -72,14 +56,6 @@ func (t *Trunks) CallAttack(tageter CallTargeterFn) error {
 
 	tgter := tageter(t)
 	results := make(chan *vegeta.Result)
-	var metrics WrapMetrics
-
-	go func() {
-		for res := range results {
-			metrics.Add(res)
-			metrics.Close()
-		}
-	}()
 
 	file, err := os.Create("call_results.bin")
 	if err != nil {
@@ -100,41 +76,46 @@ func (t *Trunks) CallAttack(tageter CallTargeterFn) error {
 }
 
 func (t *Trunks) TransactionAttack(txReporter TxReporter, tageter TransactionTageterFn, pace vegeta.Pacer, duration time.Duration, opts *TxOpts) {
-	results := make(chan *vegeta.Result)
-
 	client, _ := ethclient.Dial(opts.TargetRPC)
 	attacker := vegeta.NewAttacker()
 	tgter := tageter(opts)
 
-	var metrics WrapMetrics
-	go func() {
-		for res := range results {
-			metrics.Add(res)
-			metrics.Close()
-		}
-	}()
-
-	file, _ := os.Create("results.bin")
+	file, _ := os.Create(t.outputFileName)
 	defer file.Close()
-	encoder := vegeta.NewEncoder(file)
+	// encoder := vegeta.NewEncoder(file)
+	var metrics vegeta.Metrics
+	var txSuccess uint16
 
+	var mu sync.Mutex
 	sem := semaphore.NewWeighted(3)
+
 	t.wg.Add(1)
 	go func() {
 		for res := range attacker.Attack(tgter, pace, duration, "Transaction Attack") {
 			sem.Acquire(context.Background(), 1)
 			t.wg.Add(1)
+
 			go func(rr *vegeta.Result) {
 				defer sem.Release(1)
 				r := txReporter(rr, client)
-				encoder.Encode(r)
+				metrics.Add(r)
+				if r.Code == 1 {
+					mu.Lock()
+					txSuccess++
+					mu.Unlock()
+				}
 				t.wg.Done()
 			}(res)
 		}
+		metrics.Close()
+		metrics.Success = float64(txSuccess) / float64(metrics.Requests)
 		t.wg.Done()
 	}()
 	t.wg.Wait()
-	close(results)
+
+	fmt.Println("Reporting result...")
+	reporter := vegeta.NewTextReporter(&metrics)
+	reporter.Report(file)
 }
 
 func TranferReporter(result *vegeta.Result, client *ethclient.Client) *vegeta.Result {

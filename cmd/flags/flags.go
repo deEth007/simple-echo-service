@@ -48,6 +48,11 @@ var (
 		Usage:   "L2StandardBrige Address",
 		EnvVars: utils.PrefixEnvVars(envPrefix, "L2_STANDARD_BRIDGE"),
 	}
+	OutputFileFlag = &cli.StringFlag{
+		Name:    "output-file-name",
+		Usage:   "Output result file name",
+		EnvVars: utils.PrefixEnvVars(envPrefix, "OUTPUT_FILE_NAME"),
+	}
 )
 
 var Flags = []cli.Flag{
@@ -58,6 +63,7 @@ var Flags = []cli.Flag{
 	L2ChainIdFlag,
 	L1StandardBrige,
 	L2StandardBrige,
+	OutputFileFlag,
 }
 
 func init() {

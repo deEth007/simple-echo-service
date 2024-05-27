@@ -67,6 +67,8 @@ func NewService(cfg *CLIConfig) (*TrunksErvice, error) {
 
 		L1StandardBridgeAddress: cfg.L1StandardBrige,
 		L2StandardBridgeAddress: cfg.L2StandardBrige,
+
+		outputFileName: cfg.OutputFileName,
 	}
 
 	svc.Trunks = trunks
