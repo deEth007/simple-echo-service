@@ -1,0 +1,31 @@
+name: "scenario-1"
+duration: 10s
+accounts: 5000 # if not enough accounts, occured nonce error
+
+# pace has two type (rate, linear)
+
+call:
+  pace:
+    rate:
+      freq: 500
+      per: 1s
+
+transfer:
+  pace:
+    rate:
+      freq: 500
+      per: 1s
+
+deposit:
+  pace:
+    linear:
+      start:
+        freq: 10
+        per: 1s
+      slope: 2
+
+withdrawal:
+  pace:
+    rate:
+      freq: 100
+      per: 1m
