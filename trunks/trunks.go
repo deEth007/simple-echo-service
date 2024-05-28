@@ -20,18 +20,25 @@ import (
 type Trunks struct {
 	wg *sync.WaitGroup
 
+	Scenario *Scenario
+
 	L1RPC string
 	L2RPC string
 
-	L1ChainId *big.Int
-	L2ChainId *big.Int
+	L1ChainId   *big.Int
+	L2ChainId   *big.Int
+	L2BlockTime *big.Int
 
 	TransferAccounts   *Accounts
 	DepositAccounts    *Accounts
 	WithdrawalAccounts *Accounts
 
-	L1StandardBridgeAddress string
-	L2StandardBridgeAddress string
+	L1StandardBridgeAddress    string
+	L2StandardBridgeAddress    string
+	L2ToL1MessagePasserAddress string
+	BatcherAddress             string
+	ProposerAddress            string
+	SequencerFeeVaultAddress   string
 
 	outputFileName string
 }
@@ -43,13 +50,18 @@ func (t *Trunks) Start() {
 		TargetRPC:     t.L2RPC,
 		TargetChainId: t.L2ChainId,
 		Accounts:      t.WithdrawalAccounts,
+		To:            t.L2StandardBridgeAddress,
 	}
-	pace := vegeta.Rate{Freq: 3000, Per: time.Second}
+	pace := vegeta.Rate{Freq: 500, Per: time.Second}
 	duration := time.Duration(2 * time.Second)
-	t.TransactionAttack(TranferConfirm, TransactionTageter, pace, duration, opts)
+	t.transactionAttack(l2TranferConfirm, TransactionTageter, pace, duration, opts)
 }
 
-func (t *Trunks) CallAttack(tageter CallTargeterFn) error {
+func (t *Trunks) TransferAttacker()   {}
+func (t *Trunks) DepositAttacker()    {}
+func (t *Trunks) WithdrawalAttacker() {}
+
+func (t *Trunks) callAttack(tageter CallTargeterFn) error {
 	rate := vegeta.Rate{Freq: 1000, Per: time.Second}
 	duration := 2 * time.Second
 	attacker := vegeta.NewAttacker()
@@ -75,7 +87,7 @@ func (t *Trunks) CallAttack(tageter CallTargeterFn) error {
 	return err
 }
 
-func (t *Trunks) TransactionAttack(txConfirm TxConfirm, tageter TransactionTageterFn, pace vegeta.Pacer, duration time.Duration, opts *TxOpts) {
+func (t *Trunks) transactionAttack(txConfirm TxConfirm, tageter TransactionTageterFn, pace vegeta.Pacer, duration time.Duration, opts *TxOpts) {
 	client, _ := ethclient.Dial(opts.TargetRPC)
 	attacker := vegeta.NewAttacker()
 	tgter := tageter(opts)
@@ -119,7 +131,7 @@ func (t *Trunks) TransactionAttack(txConfirm TxConfirm, tageter TransactionTaget
 	reporter.Report(file)
 }
 
-func TranferConfirm(result *vegeta.Result, client *ethclient.Client) *vegeta.Result {
+func l2TranferConfirm(result *vegeta.Result, client *ethclient.Client) *vegeta.Result {
 	r := result
 	body := map[string]interface{}{}
 	json.Unmarshal(r.Body, &body)

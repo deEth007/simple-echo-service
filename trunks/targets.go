@@ -73,8 +73,6 @@ func TransactionTageter(opts *TxOpts) vegeta.Targeter {
 		} else {
 			to = common.HexToAddress(opts.To)
 		}
-		fmt.Printf("%s\n", opts.To)
-		fmt.Printf("trasnfer from: %s, to: %s\n", from.Address.Hex(), to)
 
 		var data []byte
 		transferGas := uint64(3000000)
