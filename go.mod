@@ -5,7 +5,10 @@ go 1.21.8
 require (
 	github.com/ethereum-optimism/optimism v1.7.0
 	github.com/ethereum/go-ethereum v1.13.8
+	github.com/tsenart/vegeta/v12 v12.11.1
 	github.com/urfave/cli/v2 v2.27.2
+	golang.org/x/sync v0.6.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -72,7 +75,6 @@ require (
 	github.com/syndtr/goleveldb v1.0.1-0.20220614013038-64ee5596c38a // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
-	github.com/tsenart/vegeta/v12 v12.11.1 // indirect
 	github.com/tyler-smith/go-bip39 v1.1.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20240312152122-5f08fbb34913 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
@@ -80,12 +82,10 @@ require (
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 	golang.org/x/mod v0.14.0 // indirect
 	golang.org/x/net v0.19.0 // indirect
-	golang.org/x/sync v0.6.0 // indirect
 	golang.org/x/sys v0.17.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/tools v0.16.1 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
