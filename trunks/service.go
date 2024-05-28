@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tokamak-network/tokamak-trunks/nmgr"
+	"github.com/tokamak-network/tokamak-trunks/reporter"
 	"github.com/tokamak-network/tokamak-trunks/utils"
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v3"
@@ -139,6 +140,7 @@ func (ts *TrunksErvice) Start() error {
 
 func (ts *TrunksErvice) Stop() {
 	// ts.NodeMgr.Destroy()
-	ChainReporter.RecordTPS(big.NewInt(2))
-	ChainReporter.PrintReport()
+	reporter := reporter.Get()
+	reporter.RecordTPS(big.NewInt(2))
+	reporter.PrintReport()
 }

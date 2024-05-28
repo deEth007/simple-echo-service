@@ -1,18 +1,42 @@
 package trunks
 
+import (
+	"time"
+
+	vegeta "github.com/tsenart/vegeta/v12/lib"
+)
+
 type Scenario struct {
 	Name     string `yaml:"name"`
-	Duration string `yaml:"duration"`
 	Accounts uint   `yaml:"accounts"`
 
-	Call       *Action `yaml:"call,omitempty"`
-	Transfer   *Action `yaml:"transfer,omitempty"`
-	Deposit    *Action `yaml:"deposit,omitempty"`
-	Withdrawal *Action `yaml:"withdrawal,omitempty"`
+	Actions []Action `yaml:"actions"`
 }
 
 type Action struct {
-	Pace *Pace `yaml:"pace"`
+	Method   string `yaml:"method"`
+	Duration string `yaml:"duration"`
+	Bridge   string `yaml:"bridge,omitempty"`
+	To       string `yaml:"to,omitempty"`
+	Pace     *Pace  `yaml:"pace"`
+}
+
+func (a *Action) GetPace() vegeta.Pacer {
+	if a.Pace.Rate != nil {
+		d, _ := time.ParseDuration(a.Pace.Rate.Per)
+		return vegeta.Rate{Freq: a.Pace.Rate.Freq, Per: d}
+	}
+	if a.Pace.Linear != nil {
+		d, _ := time.ParseDuration(a.Pace.Linear.Start.Per)
+		return vegeta.LinearPacer{
+			StartAt: vegeta.ConstantPacer{
+				Freq: a.Pace.Linear.Start.Freq,
+				Per:  d,
+			},
+			Slope: a.Pace.Linear.Slope,
+		}
+	}
+	return nil
 }
 
 type Pace struct {

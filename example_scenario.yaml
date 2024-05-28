@@ -1,31 +1,26 @@
 name: "scenario-1"
-duration: 10s
-accounts: 5000 # if not enough accounts, occured nonce error
+accounts: 1000 # if not enough accounts, occured nonce error
 
-# pace has two type (rate, linear)
-
-call:
-  pace:
-    rate:
-      freq: 500
-      per: 1s
-
-transfer:
-  pace:
-    rate:
-      freq: 500
-      per: 1s
-
-deposit:
-  pace:
-    linear:
-      start:
-        freq: 10
-        per: 1s
-      slope: 2
-
-withdrawal:
-  pace:
-    rate:
-      freq: 100
-      per: 1m
+actions:
+  # - method: call
+  #   duration: 2s
+  #   pace:
+  #     rate:
+  #       freq: 500
+  #       per: 1s
+  # - method: call
+  #   duration: 2s
+  #   pace:
+  #     rate:
+  #       freq: 100
+  #       per: 1s
+  - method: transaction
+    bridge: withdrawal # withdrawal, switch L1 and L2 (RPC)
+    to: 0x4200000000000000000000000000000000000010
+    duration: 2s
+    pace:
+      linear:
+        start:
+          freq: 10
+          per: 1s
+        slope: 2
