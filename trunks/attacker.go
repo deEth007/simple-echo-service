@@ -124,7 +124,7 @@ func (ta *TransactionAttacker) Attack() <-chan *vegeta.Result {
 }
 
 func waitTxConfirm(txHash common.Hash, result *vegeta.Result, client *ethclient.Client) error {
-	reporter := reporter.Get()
+	reporter := reporter.GetTrunksReport()
 	var blockNumber *big.Int
 
 	for {

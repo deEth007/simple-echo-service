@@ -3,9 +3,9 @@ package trunks
 import (
 	"fmt"
 	"math/big"
-	"os"
 	"sync"
 
+	"github.com/tokamak-network/tokamak-trunks/reporter"
 	vegeta "github.com/tsenart/vegeta/v12/lib"
 )
 
@@ -22,28 +22,12 @@ type Trunks struct {
 	L2BlockTime *big.Int
 
 	Accounts *Accounts
-
-	L1StandardBridgeAddress    string
-	L2StandardBridgeAddress    string
-	L2ToL1MessagePasserAddress string
-	BatcherAddress             string
-	ProposerAddress            string
-	SequencerFeeVaultAddress   string
-
-	outputFileName string
 }
 
 func (t *Trunks) Start() error {
-	file, err := os.Create(t.Scenario.Name)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
 	for _, action := range t.Scenario.Actions {
 		var metrics vegeta.Metrics
 		fmt.Printf("start action %s\n", action.Method)
-		file.WriteString(fmt.Sprintf("%s attack\n", action.Method))
 		attacker, err := MakeAttacker(&action, t)
 		if err != nil {
 			return err
@@ -53,10 +37,8 @@ func (t *Trunks) Start() error {
 		}
 
 		metrics.Close()
-		reporter := vegeta.NewTextReporter(&metrics)
-		reporter.Report(file)
-		file.WriteString("\n")
+		vReporter := vegeta.NewTextReporter(&metrics)
+		reporter.GetReportManager().Report(vReporter, action.Method)
 	}
-	fmt.Println("eeeeend start")
 	return nil
 }

@@ -2,11 +2,15 @@ package reporter
 
 import (
 	"fmt"
+	"io"
 	"math/big"
+	"os"
 	"sync"
+	"text/tabwriter"
 
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
+	vegeta "github.com/tsenart/vegeta/v12/lib"
 )
 
 // L1 Gas는 L2에서 지출한 것만 기록 즉, Withdrawal 트랜잭션에서 발생한 L1가스 fee 기록
@@ -28,6 +32,26 @@ import (
 
 // SequencerFeeVault 0x4200000000000000000000000000000000000011
 
+type reportManager struct {
+	w *os.File
+}
+
+var reportMgr *reportManager
+
+func (rm *reportManager) Report(r vegeta.Reporter, title string) error {
+	rm.w.WriteString(title + "\n")
+	err := r.Report(rm.w)
+	if err != nil {
+		return err
+	}
+	rm.w.WriteString("\n")
+	return nil
+}
+
+func GetReportManager() *reportManager {
+	return reportMgr
+}
+
 type reports struct {
 	tps                       *big.Int
 	totalConfirmTransactions  *big.Int
@@ -44,8 +68,8 @@ type reports struct {
 }
 
 var once sync.Once
-
-var reporter *reports
+var trunksReport *reports
+var first bool
 
 func (r *reports) RecordTPS() {
 	sb := new(big.Int).Set(r.startBlockNumber)
@@ -63,8 +87,12 @@ func (r *reports) RecordConfirmRequest() {
 	r.totalConfirmTransactions.Add(r.totalConfirmTransactions, big.NewInt(1))
 }
 
-// 수정해야 됨 start 항상 0임
 func (r *reports) RecordStartToLastBlock(receipt *types.Receipt) {
+	if first {
+		r.startBlockNumber.Set(receipt.BlockNumber)
+		first = false
+		return
+	}
 	if r.startBlockNumber.Cmp(receipt.BlockNumber) > 0 {
 		r.startBlockNumber.Set(receipt.BlockNumber)
 	}
@@ -97,14 +125,14 @@ func weiToEther(wei *big.Int) *big.Float {
 	return ether
 }
 
-func Get() *reports {
-	return reporter
+func GetTrunksReport() *reports {
+	return trunksReport
 }
 
 func InitReporter(cfg *Config) {
 	once.Do(
 		func() {
-			reporter = &reports{
+			trunksReport = &reports{
 				tps:                       big.NewInt(0),
 				totalConfirmTransactions:  big.NewInt(0),
 				l1GasUsed:                 big.NewInt(0),
@@ -118,20 +146,40 @@ func InitReporter(cfg *Config) {
 				endBlockNumber:            big.NewInt(0),
 				l2BlockTime:               cfg.l2BlockTime,
 			}
+			file, _ := os.Create(cfg.filename)
+			reportMgr = &reportManager{
+				w: file,
+			}
+			first = true
 		},
 	)
 }
 
-func (r *reports) Report() {
-	fmt.Printf("tps: %d\n", r.tps)
-	fmt.Printf("totalConfirmTransactions: %d\n", r.totalConfirmTransactions)
-	fmt.Printf("l1GasUsed: %d\n", r.l1GasUsed)
-	fmt.Printf("l2GasUsed: %d\n", r.l2GasUsed)
-	fmt.Printf("l1GasFee: %d (%f ETH)\n", r.l1GasFee, weiToEther(r.l1GasFee))
-	fmt.Printf("l2GasFee: %d (%f ETH)\n", r.l2GasFee, weiToEther(r.l2GasFee))
-	fmt.Printf("batcherConsumeEther: %d\n", r.batcherConsumeEther)
-	fmt.Printf("proposerConsumeEther: %d\n", r.proposerConsumeEther)
-	fmt.Printf("totalSequncerConsumeEther: %d\n", r.totalSequncerConsumeEther)
-	fmt.Printf("startBlockNumber: %d\n", r.startBlockNumber)
-	fmt.Printf("endBlockNumber: %d\n", r.endBlockNumber)
+func (r *reports) report(w io.Writer) error {
+	const fmtstr = "TPS\t%d\n" +
+		"Total Confirmed Tx\t%d\n" +
+		"L1GasUsed\t%d\n" +
+		"L2GasUSed\t%d\n" +
+		"L1GasFee\t%d Wei (%f ETH)\n" +
+		"L2GasFee\t%d Wei (%f ETH)\n" +
+		"L2BlockTime\t%ds\n"
+	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', tabwriter.StripEscape)
+	if _, err := fmt.Fprintf(tw, fmtstr,
+		r.tps,
+		r.totalConfirmTransactions,
+		r.l1GasUsed,
+		r.l2GasUsed,
+		r.l1GasFee, weiToEther(r.l1GasFee),
+		r.l2GasFee, weiToEther(r.l2GasFee),
+		r.l2BlockTime,
+	); err != nil {
+		return err
+	}
+	return tw.Flush()
+}
+
+func NewTrunksReporter() vegeta.Reporter {
+	return func(w io.Writer) (err error) {
+		return trunksReport.report(w)
+	}
 }

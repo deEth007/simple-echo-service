@@ -107,15 +107,6 @@ func initTrunks(cfg *CLIConfig, accounts *Accounts, scenario *Scenario) (*Trunks
 		L2BlockTime: new(big.Int).SetUint64(cfg.L2BlockTime),
 
 		Accounts: accounts,
-
-		L1StandardBridgeAddress:    cfg.L1StandardBrige,
-		L2StandardBridgeAddress:    cfg.L2StandardBrige,
-		L2ToL1MessagePasserAddress: cfg.L2ToL1MessagePasser,
-		BatcherAddress:             cfg.Batcher,
-		ProposerAddress:            cfg.Proposer,
-		SequencerFeeVaultAddress:   cfg.SequencerFeeVault,
-
-		outputFileName: scenario.Name,
 	}, nil
 }
 
@@ -135,7 +126,12 @@ func (ts *TrunksErvice) Start() error {
 
 func (ts *TrunksErvice) Stop() {
 	// ts.NodeMgr.Destroy()
-	reporter := reporter.Get()
-	reporter.RecordTPS()
-	reporter.Report()
+	// f, _ := os.Create("test")
+	// defer f.Close()
+	// reporter := reporter.Get()
+	// reporter.RecordTPS()
+	// reporter.Report(f)
+	tReport := reporter.GetTrunksReport()
+	tReport.RecordTPS()
+	reporter.GetReportManager().Report(reporter.NewTrunksReporter(), "test")
 }
