@@ -44,7 +44,7 @@ func CallTargeter(opts *TargetOption) vegeta.Targeter {
 		tgt.Method = "POST"
 		tgt.URL = opts.RPC
 		tgt.Header = map[string][]string{
-			"Content-type": []string{"application/json"},
+			"Content-type": {"application/json"},
 		}
 
 		roundRobin = (roundRobin + 1) % len(CALL_METHOD)
@@ -110,7 +110,7 @@ func TransactionTargeter(opts *TargetOption) vegeta.Targeter {
 		tgt.Method = "POST"
 		tgt.URL = RPC
 		tgt.Header = map[string][]string{
-			"Content-type": []string{"application/json"},
+			"Content-type": {"application/json"},
 		}
 		tgt.Body = []byte(body)
 

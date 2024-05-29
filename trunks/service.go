@@ -125,13 +125,9 @@ func (ts *TrunksErvice) Start() error {
 }
 
 func (ts *TrunksErvice) Stop() {
-	// ts.NodeMgr.Destroy()
-	// f, _ := os.Create("test")
-	// defer f.Close()
-	// reporter := reporter.Get()
-	// reporter.RecordTPS()
-	// reporter.Report(f)
 	tReport := reporter.GetTrunksReport()
 	tReport.RecordTPS()
-	reporter.GetReportManager().Report(reporter.NewTrunksReporter(), "test")
+	reporter.GetReportManager().Report(reporter.TrunksReporter(), "test")
+	reporter.GetReportManager().Close()
+	ts.NodeMgr.Destroy()
 }

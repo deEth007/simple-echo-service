@@ -31,6 +31,7 @@ import (
 // 총 proposer "                "
 
 // SequencerFeeVault 0x4200000000000000000000000000000000000011
+var once sync.Once
 
 type reportManager struct {
 	w *os.File
@@ -46,6 +47,10 @@ func (rm *reportManager) Report(r vegeta.Reporter, title string) error {
 	}
 	rm.w.WriteString("\n")
 	return nil
+}
+
+func (rm *reportManager) Close() {
+	reportMgr.w.Close()
 }
 
 func GetReportManager() *reportManager {
@@ -67,7 +72,6 @@ type reports struct {
 	l2BlockTime               *big.Int
 }
 
-var once sync.Once
 var trunksReport *reports
 var first bool
 
@@ -178,7 +182,7 @@ func (r *reports) report(w io.Writer) error {
 	return tw.Flush()
 }
 
-func NewTrunksReporter() vegeta.Reporter {
+func TrunksReporter() vegeta.Reporter {
 	return func(w io.Writer) (err error) {
 		return trunksReport.report(w)
 	}
