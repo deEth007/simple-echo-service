@@ -40,26 +40,30 @@ type reports struct {
 	totalSequncerConsumeEther *big.Int
 	startBlockNumber          *big.Int
 	endBlockNumber            *big.Int
+	l2BlockTime               *big.Int
 }
 
 var once sync.Once
 
 var reporter *reports
 
-func (r *reports) RecordTPS(l2BlockTime *big.Int) {
+func (r *reports) RecordTPS() {
 	sb := new(big.Int).Set(r.startBlockNumber)
 	eb := new(big.Int).Set(r.endBlockNumber)
 	tb := eb.Sub(eb, sb)
-	duration := tb.Mul(tb, l2BlockTime)
+	duration := tb.Mul(tb, r.l2BlockTime)
 
 	tr := new(big.Int).Set(r.totalConfirmTransactions)
-	r.tps = tr.Div(tr, duration)
+	if duration.Cmp(big.NewInt(0)) != 0 {
+		r.tps = tr.Div(tr, duration)
+	}
 }
 
 func (r *reports) RecordConfirmRequest() {
 	r.totalConfirmTransactions.Add(r.totalConfirmTransactions, big.NewInt(1))
 }
 
+// 수정해야 됨 start 항상 0임
 func (r *reports) RecordStartToLastBlock(receipt *types.Receipt) {
 	if r.startBlockNumber.Cmp(receipt.BlockNumber) > 0 {
 		r.startBlockNumber.Set(receipt.BlockNumber)
@@ -97,7 +101,7 @@ func Get() *reports {
 	return reporter
 }
 
-func init() {
+func InitReporter(cfg *Config) {
 	once.Do(
 		func() {
 			reporter = &reports{
@@ -112,12 +116,13 @@ func init() {
 				startBlockNumber:          big.NewInt(0),
 				totalSequncerConsumeEther: big.NewInt(0),
 				endBlockNumber:            big.NewInt(0),
+				l2BlockTime:               cfg.l2BlockTime,
 			}
 		},
 	)
 }
 
-func (r *reports) PrintReport() {
+func (r *reports) Report() {
 	fmt.Printf("tps: %d\n", r.tps)
 	fmt.Printf("totalConfirmTransactions: %d\n", r.totalConfirmTransactions)
 	fmt.Printf("l1GasUsed: %d\n", r.l1GasUsed)

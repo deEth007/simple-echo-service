@@ -5,11 +5,8 @@ import (
 	"math/big"
 	"os"
 	"sync"
-	"time"
 
 	vegeta "github.com/tsenart/vegeta/v12/lib"
-
-	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 type Trunks struct {
@@ -24,9 +21,7 @@ type Trunks struct {
 	L2ChainId   *big.Int
 	L2BlockTime *big.Int
 
-	TransferAccounts   *Accounts
-	DepositAccounts    *Accounts
-	WithdrawalAccounts *Accounts
+	Accounts *Accounts
 
 	L1StandardBridgeAddress    string
 	L2StandardBridgeAddress    string
@@ -39,15 +34,16 @@ type Trunks struct {
 }
 
 func (t *Trunks) Start() error {
-	var metrics vegeta.Metrics
-	file, err := os.Create("call_results")
+	file, err := os.Create(t.Scenario.Name)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
 	for _, action := range t.Scenario.Actions {
+		var metrics vegeta.Metrics
 		fmt.Printf("start action %s\n", action.Method)
+		file.WriteString(fmt.Sprintf("%s attack\n", action.Method))
 		attacker, err := MakeAttacker(&action, t)
 		if err != nil {
 			return err
@@ -55,55 +51,12 @@ func (t *Trunks) Start() error {
 		for res := range attacker.Attack() {
 			metrics.Add(res)
 		}
+
+		metrics.Close()
+		reporter := vegeta.NewTextReporter(&metrics)
+		reporter.Report(file)
+		file.WriteString("\n")
 	}
-	metrics.Close()
-
-	reporter := vegeta.NewTextReporter(&metrics)
-	reporter.Report(file)
-
+	fmt.Println("eeeeend start")
 	return nil
-}
-
-func MakeAttacker(action *Action, t *Trunks) (Attacker, error) {
-	duration, err := time.ParseDuration(action.Duration)
-	if err != nil {
-		return nil, err
-	}
-	if action.Method == "call" {
-		tOption := &TargetOption{
-			RPC: t.L2RPC,
-		}
-		return &CallAttacker{
-			Pace:     action.GetPace(),
-			Duration: duration,
-			Targeter: CallTargeter(tOption),
-		}, nil
-
-	}
-	if action.Method == "transaction" {
-		rpc := t.L2RPC
-		chainId := t.L2ChainId
-		if action.Bridge == "deposit" {
-			rpc = t.L1RPC
-			chainId = t.L1ChainId
-		}
-		client, _ := ethclient.Dial(rpc)
-		tOption := &TargetOption{
-			RPC: rpc,
-			TransactionOption: &TransactionOption{
-				Accounts: t.TransferAccounts,
-				ChainId:  chainId,
-				To:       action.To,
-				Client:   client,
-			},
-		}
-		return &TransactionAttacker{
-			Client:   client,
-			Pace:     action.GetPace(),
-			Duration: duration,
-			Targeter: TransactionTargeter(tOption),
-		}, nil
-	}
-
-	return nil, fmt.Errorf("wrong action method")
 }

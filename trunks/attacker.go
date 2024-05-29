@@ -33,6 +33,50 @@ type TransactionAttacker struct {
 	Targeter vegeta.Targeter
 }
 
+func MakeAttacker(action *Action, t *Trunks) (Attacker, error) {
+	duration, err := time.ParseDuration(action.Duration)
+	if err != nil {
+		return nil, err
+	}
+	if action.Method == "call" {
+		tOption := &TargetOption{
+			RPC: t.L2RPC,
+		}
+		return &CallAttacker{
+			Pace:     action.GetPace(),
+			Duration: duration,
+			Targeter: CallTargeter(tOption),
+		}, nil
+
+	}
+	if action.Method == "transaction" {
+		rpc := t.L2RPC
+		chainId := t.L2ChainId
+		if action.Bridge == "deposit" {
+			rpc = t.L1RPC
+			chainId = t.L1ChainId
+		}
+		client, _ := ethclient.Dial(rpc)
+		tOption := &TargetOption{
+			RPC: rpc,
+			TransactionOption: &TransactionOption{
+				Accounts: t.Accounts,
+				ChainId:  chainId,
+				To:       action.To,
+				Client:   client,
+			},
+		}
+		return &TransactionAttacker{
+			Client:   client,
+			Pace:     action.GetPace(),
+			Duration: duration,
+			Targeter: TransactionTargeter(tOption),
+		}, nil
+	}
+
+	return nil, fmt.Errorf("wrong action method")
+}
+
 func (ca *CallAttacker) Attack() <-chan *vegeta.Result {
 	fmt.Println("call attack start")
 	attacker := vegeta.NewAttacker()
@@ -48,13 +92,13 @@ func (ca *CallAttacker) Attack() <-chan *vegeta.Result {
 }
 
 func (ta *TransactionAttacker) Attack() <-chan *vegeta.Result {
-	wg := new(sync.WaitGroup)
 	fmt.Println("transaction attack start")
 	attacker := vegeta.NewAttacker()
+	sem := semaphore.NewWeighted(3)
 	results := make(chan *vegeta.Result)
 
 	go func() {
-		sem := semaphore.NewWeighted(3)
+		wg := new(sync.WaitGroup)
 		defer close(results)
 		for res := range attacker.Attack(ta.Targeter, ta.Pace, ta.Duration, "transaction attack") {
 			txHash, err := txHashFromResult(res)
@@ -66,13 +110,14 @@ func (ta *TransactionAttacker) Attack() <-chan *vegeta.Result {
 			wg.Add(1)
 			go func(rr *vegeta.Result) {
 				defer sem.Release(1)
+				defer wg.Done()
 				err := waitTxConfirm(txHash, rr, ta.Client)
 				if err != nil {
 					return
 				}
 				results <- rr
-				wg.Done()
 			}(res)
+			wg.Wait()
 		}
 	}()
 	return results
@@ -113,7 +158,6 @@ func txHashFromResult(r *vegeta.Result) (common.Hash, error) {
 	json.Unmarshal(r.Body, &body)
 
 	if _, exist := body["error"]; exist {
-		fmt.Println("error exist")
 		return common.Hash{}, errors.New("not exist result")
 	}
 

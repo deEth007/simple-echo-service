@@ -35,6 +35,8 @@ func Main() cli.ActionFunc {
 }
 
 func NewService(cfg *CLIConfig) (*TrunksErvice, error) {
+	initReporter(cfg)
+
 	scenario, err := initScenario(cfg.ScenarioFilePath)
 	if err != nil {
 		return nil, err
@@ -59,6 +61,12 @@ func NewService(cfg *CLIConfig) (*TrunksErvice, error) {
 		NodeMgr: nodeMgr,
 		Trunks:  trunks,
 	}, nil
+}
+
+func initReporter(cfg *CLIConfig) {
+	reporter.InitReporter(
+		reporter.NewConfig(cfg.Reporter),
+	)
 }
 
 func initScenario(path string) (*Scenario, error) {
@@ -86,17 +94,6 @@ func initBaseNodeManager(cfg *CLIConfig, accounts *Accounts) (*nmgr.BaseNodeMana
 }
 
 func initTrunks(cfg *CLIConfig, accounts *Accounts, scenario *Scenario) (*Trunks, error) {
-
-	transferAccounts := &Accounts{
-		List: accounts.List[:len(accounts.List)/3+1],
-	}
-	depositAccounts := &Accounts{
-		List: accounts.List[len(accounts.List)/3+1 : (len(accounts.List)*2)/3+2],
-	}
-	withdrawalAccounts := &Accounts{
-		List: accounts.List[(len(accounts.List)*2)/3+2:],
-	}
-
 	return &Trunks{
 		wg: new(sync.WaitGroup),
 
@@ -109,9 +106,7 @@ func initTrunks(cfg *CLIConfig, accounts *Accounts, scenario *Scenario) (*Trunks
 		L2ChainId:   new(big.Int).SetUint64(cfg.L2ChainId),
 		L2BlockTime: new(big.Int).SetUint64(cfg.L2BlockTime),
 
-		TransferAccounts:   transferAccounts,
-		DepositAccounts:    depositAccounts,
-		WithdrawalAccounts: withdrawalAccounts,
+		Accounts: accounts,
 
 		L1StandardBridgeAddress:    cfg.L1StandardBrige,
 		L2StandardBridgeAddress:    cfg.L2StandardBrige,
@@ -141,6 +136,6 @@ func (ts *TrunksErvice) Start() error {
 func (ts *TrunksErvice) Stop() {
 	// ts.NodeMgr.Destroy()
 	reporter := reporter.Get()
-	reporter.RecordTPS(big.NewInt(2))
-	reporter.PrintReport()
+	reporter.RecordTPS()
+	reporter.Report()
 }

@@ -3,6 +3,7 @@ package trunks
 import (
 	"github.com/tokamak-network/tokamak-trunks/cmd/flags"
 	"github.com/tokamak-network/tokamak-trunks/nmgr"
+	"github.com/tokamak-network/tokamak-trunks/reporter"
 	"github.com/urfave/cli/v2"
 )
 
@@ -21,7 +22,8 @@ type CLIConfig struct {
 	Proposer            string
 	SequencerFeeVault   string
 
-	NodeMgr nmgr.CLIConfig
+	NodeMgr  nmgr.CLIConfig
+	Reporter reporter.CLIConfig
 }
 
 func NewCLIConfig(ctx *cli.Context) *CLIConfig {
@@ -32,7 +34,6 @@ func NewCLIConfig(ctx *cli.Context) *CLIConfig {
 		ScenarioFilePath:    ctx.Path(flags.ScenarioFileFlag.Name),
 		L1ChainId:           ctx.Uint64(flags.L1ChainIdFlag.Name),
 		L2ChainId:           ctx.Uint64(flags.L2ChainIdFlag.Name),
-		L2BlockTime:         ctx.Uint64(flags.L2BlockTimeFlag.Name),
 		L1StandardBrige:     ctx.String(flags.L1StandardBrige.Name),
 		L2StandardBrige:     ctx.String(flags.L2StandardBrige.Name),
 		L2ToL1MessagePasser: ctx.String(flags.L2ToL1MessagePasser.Name),
@@ -40,5 +41,6 @@ func NewCLIConfig(ctx *cli.Context) *CLIConfig {
 		Proposer:            ctx.String(flags.Proposer.Name),
 		SequencerFeeVault:   ctx.String(flags.SequencerFeeVault.Name),
 		NodeMgr:             nmgr.ReadCLIConfig(ctx),
+		Reporter:            reporter.ReadCLIConfig(ctx),
 	}
 }

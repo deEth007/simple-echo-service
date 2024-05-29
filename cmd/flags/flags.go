@@ -2,6 +2,7 @@ package flags
 
 import (
 	"github.com/tokamak-network/tokamak-trunks/nmgr"
+	"github.com/tokamak-network/tokamak-trunks/reporter"
 	"github.com/tokamak-network/tokamak-trunks/utils"
 
 	"github.com/urfave/cli/v2"
@@ -43,11 +44,6 @@ var (
 		Usage:   "L2 chain id",
 		EnvVars: utils.PrefixEnvVars(envPrefix, "L2_CHAIN_ID"),
 	}
-	L2BlockTimeFlag = &cli.Uint64Flag{
-		Name:    "l2-block-time",
-		Usage:   "L2Block time",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "L2_BLOCK_TIME"),
-	}
 	L1StandardBrige = &cli.StringFlag{
 		Name:    "l1-standard-bridge",
 		Usage:   "L1StandardBrige Address",
@@ -87,7 +83,6 @@ var Flags = []cli.Flag{
 	ScenarioFileFlag,
 	L1ChainIdFlag,
 	L2ChainIdFlag,
-	L2BlockTimeFlag,
 	L1StandardBrige,
 	L2StandardBrige,
 	L2ToL1MessagePasser,
@@ -98,4 +93,5 @@ var Flags = []cli.Flag{
 
 func init() {
 	Flags = append(Flags, nmgr.CLIFlags(envPrefix)...)
+	Flags = append(Flags, reporter.CLIFlags(envPrefix)...)
 }
