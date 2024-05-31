@@ -3,12 +3,15 @@ package trunks
 import (
 	"log"
 	"math/big"
+	"os"
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/tokamak-network/tokamak-trunks/nmgr"
+	"github.com/tokamak-network/tokamak-trunks/reporter"
+	"github.com/tokamak-network/tokamak-trunks/utils"
 	"github.com/urfave/cli/v2"
+	"gopkg.in/yaml.v3"
 )
 
 type TrunksErvice struct {
@@ -32,48 +35,79 @@ func Main() cli.ActionFunc {
 }
 
 func NewService(cfg *CLIConfig) (*TrunksErvice, error) {
-	var svc TrunksErvice
+	initReporter(cfg)
 
-	transferAccounts := GenerateAccounts(1000)
-	depositAccounts := GenerateAccounts(1000)
-	WithdrawalAccounts := GenerateAccounts(1000)
+	scenario, err := initScenario(cfg.ScenarioFilePath)
+	if err != nil {
+		return nil, err
+	}
 
-	allAddress := []common.Address{}
-	allAddress = append(allAddress, transferAccounts.GetAddresses()...)
-	allAddress = append(allAddress, depositAccounts.GetAddresses()...)
-	allAddress = append(allAddress, WithdrawalAccounts.GetAddresses()...)
-
+	var accounts *Accounts
+	var nodeMgr *nmgr.BaseNodeManager
 	if cfg.NodeManagerEnable {
-		var err error
-		svc.NodeMgr, err = nmgr.NewBaseNodeManager(
-			nmgr.NewConfig(cfg.NodeMgr, allAddress...),
-		)
+		accounts = initAccounts(scenario.Accounts)
+		nodeMgr, err = initBaseNodeManager(cfg, accounts)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	trunks := &Trunks{
-		wg:    new(sync.WaitGroup),
+	trunks, err := initTrunks(cfg, accounts, scenario)
+	if err != nil {
+		return nil, err
+	}
+
+	return &TrunksErvice{
+		NodeMgr: nodeMgr,
+		Trunks:  trunks,
+	}, nil
+}
+
+func initReporter(cfg *CLIConfig) {
+	reporter.InitReporter(
+		reporter.NewConfig(cfg.Reporter),
+	)
+}
+
+func initScenario(path string) (*Scenario, error) {
+	file, err := os.ReadFile(utils.ConvertToAbsPath(path))
+	if err != nil {
+		return nil, err
+	}
+
+	var scenario Scenario
+	err = yaml.Unmarshal(file, &scenario)
+	if err != nil {
+		return nil, err
+	}
+	return &scenario, nil
+}
+
+func initAccounts(count uint) *Accounts {
+	return GenerateAccounts(count)
+}
+
+func initBaseNodeManager(cfg *CLIConfig, accounts *Accounts) (*nmgr.BaseNodeManager, error) {
+	return nmgr.NewBaseNodeManager(
+		nmgr.NewConfig(cfg.NodeMgr, accounts.GetAddresses()...),
+	)
+}
+
+func initTrunks(cfg *CLIConfig, accounts *Accounts, scenario *Scenario) (*Trunks, error) {
+	return &Trunks{
+		wg: new(sync.WaitGroup),
+
+		Scenario: scenario,
+
 		L1RPC: cfg.L1RPC,
 		L2RPC: cfg.L2RPC,
 
-		L1ChainId: new(big.Int).SetUint64(cfg.L1ChainId),
-		L2ChainId: new(big.Int).SetUint64(cfg.L2ChainId),
+		L1ChainId:   new(big.Int).SetUint64(cfg.L1ChainId),
+		L2ChainId:   new(big.Int).SetUint64(cfg.L2ChainId),
+		L2BlockTime: new(big.Int).SetUint64(cfg.L2BlockTime),
 
-		TransferAccounts:   transferAccounts,
-		DepositAccounts:    depositAccounts,
-		WithdrawalAccounts: WithdrawalAccounts,
-
-		L1StandardBridgeAddress: cfg.L1StandardBrige,
-		L2StandardBridgeAddress: cfg.L2StandardBrige,
-
-		outputFileName: cfg.OutputFileName,
-	}
-
-	svc.Trunks = trunks
-
-	return &svc, nil
+		Accounts: accounts,
+	}, nil
 }
 
 func (ts *TrunksErvice) Start() error {
@@ -90,4 +124,10 @@ func (ts *TrunksErvice) Start() error {
 	return nil
 }
 
-func (ts *TrunksErvice) Stop() {}
+func (ts *TrunksErvice) Stop() {
+	tReport := reporter.GetTrunksReport()
+	tReport.RecordTPS()
+	reporter.GetReportManager().Report(reporter.TrunksReporter(), "test")
+	reporter.GetReportManager().Close()
+	ts.NodeMgr.Destroy()
+}

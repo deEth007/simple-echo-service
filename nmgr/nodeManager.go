@@ -76,38 +76,69 @@ func (b *BaseNodeManager) Start() error {
 		fmt.Sprintf("L2OO_ADDRESS=%s", (*addresses)["L2OutputOracleProxy"]),
 	}
 	b.env = env
+	ch := make(chan uint)
+	defer close(ch)
+	go func() {
+		frames := []string{"|", "/", "-", "\\"}
+		i := 0
+
+		for {
+			time.Sleep(100 * time.Millisecond)
+			select {
+			case r := <-ch:
+				if r == 1 {
+					fmt.Println("\nFinished node up!")
+				} else {
+					fmt.Println("\nFailed node up...")
+				}
+				return
+			default:
+				fmt.Printf("\rRunning node...%s", frames[i%len(frames)])
+				i++
+			}
+		}
+	}()
 
 	if err := runCommand(
 		dir, env, "docker", "compose", "up", "-d", "l1"); err != nil {
+		ch <- 2
 		return err
 	}
 	if err := waitUpServer("8545", time.Duration(10*time.Second)); err != nil {
+		ch <- 2
 		return err
 	}
 	if err := waitRPCServer("8545", time.Duration(10*time.Second)); err != nil {
+		ch <- 2
 		return err
 	}
 
 	if err := b.generateL2Genesis(); err != nil {
+		ch <- 2
 		return err
 	}
 
 	if err := runCommand(
 		dir, env, "docker", "compose", "up", "-d", "l2"); err != nil {
+		ch <- 2
 		return err
 	}
 	if err := waitUpServer("9545", time.Duration(10*time.Second)); err != nil {
+		ch <- 2
 		return err
 	}
 	if err := waitRPCServer("9545", time.Duration(10*time.Second)); err != nil {
+		ch <- 2
 		return err
 	}
 
 	if err := runCommand(
 		dir, env, "docker", "compose", "up", "-d", "op-node", "op-proposer", "op-batcher"); err != nil {
+		ch <- 2
 		return err
 	}
 
+	ch <- 1
 	return nil
 }
 
@@ -117,12 +148,8 @@ func (b *BaseNodeManager) Destroy() error {
 	dir := b.DockerComposeDirPath
 
 	if err := runCommand(
-		dir, b.env, "docker", "compose", "rm"); err != nil {
-		return err
-	}
-
-	if err := runCommand(
-		dir, b.env, "docker", "volume", "prune", "--all"); err != nil {
+		dir, b.env, "docker", "compose", "rm", "-v", "-f"); err != nil {
+		fmt.Println(err)
 		return err
 	}
 
@@ -320,13 +347,11 @@ func runCommand(dir string, env []string, command string, args ...string) error 
 	cmd := exec.Command(command, args...)
 	cmd.Dir = dir
 	cmd.Env = append(cmd.Env, env...)
-	output, err := cmd.CombinedOutput()
+	err := cmd.Run()
 	if err != nil {
-		fmt.Printf("%s\n", output)
 		return err
-	} else {
-		fmt.Printf("%s\n", output)
 	}
+
 	return nil
 }
 

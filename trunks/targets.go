@@ -16,14 +16,25 @@ import (
 var CALL_METHOD []string = []string{
 	"eth_blockNumber",
 	"eth_chainId",
-	"eth_getBalance",
 	"eth_gasPrice",
 }
 
-type CallTargeterFn func(*Trunks) vegeta.Targeter
-type TransactionTageterFn func(*TxOpts) vegeta.Targeter
+type TargetOption struct {
+	RPC string
 
-func CallTargeter(trunks *Trunks) vegeta.Targeter {
+	*TransactionOption
+}
+
+type TransactionOption struct {
+	Accounts *Accounts
+	ChainId  *big.Int
+	To       string
+	Client   *ethclient.Client
+	Data     []byte
+	GasLimit uint64
+}
+
+func CallTargeter(opts *TargetOption) vegeta.Targeter {
 	roundRobin := -1
 	return func(tgt *vegeta.Target) error {
 		if tgt == nil {
@@ -31,9 +42,9 @@ func CallTargeter(trunks *Trunks) vegeta.Targeter {
 		}
 
 		tgt.Method = "POST"
-		tgt.URL = trunks.L2RPC
+		tgt.URL = opts.RPC
 		tgt.Header = map[string][]string{
-			"Content-type": []string{"application/json"},
+			"Content-type": {"application/json"},
 		}
 
 		roundRobin = (roundRobin + 1) % len(CALL_METHOD)
@@ -45,26 +56,25 @@ func CallTargeter(trunks *Trunks) vegeta.Targeter {
 
 var value *big.Int = big.NewInt(100000000000000000)
 
-type TxOpts struct {
-	TargetRPC     string
-	TargetChainId *big.Int
-	Accounts      *Accounts
-	To            string
-}
-
-func TransactionTageter(opts *TxOpts) vegeta.Targeter {
+func TransactionTargeter(opts *TargetOption) vegeta.Targeter {
 	roundRobin := -1
-	RPC := opts.TargetRPC
-	chainId := opts.TargetChainId
-	client, _ := ethclient.Dial(opts.TargetRPC)
-	gasPrice, _ := client.SuggestGasPrice(context.Background())
+	RPC := opts.RPC
+	chainId := opts.ChainId
+	client := opts.Client
 	accounts := opts.Accounts
+	data := opts.Data
+	gasLimit := opts.GasLimit
 
 	return func(tgt *vegeta.Target) error {
 		if tgt == nil {
 			return vegeta.ErrNilTarget
 		}
 		roundRobin = (roundRobin + 1) % len(accounts.List)
+
+		gasPrice, err := client.SuggestGasPrice(context.Background())
+		if err != nil {
+			return err
+		}
 
 		from := accounts.List[roundRobin]
 		var to common.Address
@@ -73,16 +83,26 @@ func TransactionTageter(opts *TxOpts) vegeta.Targeter {
 		} else {
 			to = common.HexToAddress(opts.To)
 		}
-		fmt.Printf("%s\n", opts.To)
-		fmt.Printf("trasnfer from: %s, to: %s\n", from.Address.Hex(), to)
 
-		var data []byte
-		transferGas := uint64(3000000)
-		nonce, _ := client.PendingNonceAt(context.Background(), from.Address)
-		tx := types.NewTransaction(nonce, to, value, transferGas, gasPrice, data)
+		if gasLimit == 0 {
+			gasLimit = uint64(300000)
+		}
+		nonce, err := client.PendingNonceAt(context.Background(), from.Address)
+		if err != nil {
+			return err
+		}
 
-		signedTx, _ := types.SignTx(tx, types.NewEIP155Signer(chainId), from.PrivKey)
-		rawTxBytes, _ := signedTx.MarshalBinary()
+		tx := types.NewTransaction(nonce, to, value, gasLimit, gasPrice, data)
+
+		signedTx, err := types.SignTx(tx, types.NewCancunSigner(chainId), from.PrivKey)
+		if err != nil {
+			return err
+		}
+
+		rawTxBytes, err := signedTx.MarshalBinary()
+		if err != nil {
+			return err
+		}
 
 		rawTxHex := hex.EncodeToString(rawTxBytes)
 		body := fmt.Sprintf(`{"jsonrpc":"2.0","method":"eth_sendRawTransaction","params":["0x%s"],"id":1}`, rawTxHex)
@@ -90,54 +110,10 @@ func TransactionTageter(opts *TxOpts) vegeta.Targeter {
 		tgt.Method = "POST"
 		tgt.URL = RPC
 		tgt.Header = map[string][]string{
-			"Content-type": []string{"application/json"},
+			"Content-type": {"application/json"},
 		}
 		tgt.Body = []byte(body)
 
 		return nil
 	}
 }
-
-// func DepositTageter(trunks *Trunks, client *ethclient.Client) vegeta.Targeter {
-// 	roundRobin := -1
-// 	RPC := trunks.L1RPC
-// 	chainId := trunks.L1ChainId
-// 	accounts := trunks.DepositAccounts
-// 	l1StandardBridgeAddress := trunks.L1StandardBridgeAddress
-// 	transactor, _ := bindings.NewL1StandardBridgeTransactor(l1StandardBridgeAddress, client)
-
-// 	return func(tgt *vegeta.Target) error {
-// 		test, _ := ethclient.Dial(RPC)
-// 		roundRobin = (roundRobin + 1) % len(accounts.List)
-
-// 		sender := accounts.List[roundRobin]
-// 		balance, _ := test.BalanceAt(context.Background(), sender.Address, nil)
-// 		nonce, _ := test.PendingNonceAt(context.Background(), sender.Address)
-// 		fmt.Printf("sender: %s balance: %d\n nonce: %d\n", sender.Address.Hex(), balance, nonce)
-
-// 		opts, _ := bind.NewKeyedTransactorWithChainID(sender.PrivKey, chainId)
-// 		opts.Value = value
-// 		opts.Nonce = new(big.Int).SetUint64(nonce)
-// 		opts.NoSend = true
-
-// 		tx, _ := transactor.DepositETH(opts, uint32(21000), []byte{})
-// 		rawTxBytes, _ := tx.MarshalBinary()
-// 		rawTxHex := hex.EncodeToString(rawTxBytes)
-// 		body := fmt.Sprintf(`{"jsonrpc":"2.0","method":"eth_sendRawTransaction","params":["0x%s"],"id":1}`, rawTxHex)
-
-// 		tgt.Method = "POST"
-// 		tgt.URL = RPC
-// 		tgt.Header = map[string][]string{
-// 			"Content-type": []string{"application/json"},
-// 		}
-// 		tgt.Body = []byte(body)
-
-// 		return nil
-// 	}
-// }
-
-// func WithrawTageter() vegeta.Targeter {
-// 	return func(t *vegeta.Target) error {
-// 		return nil
-// 	}
-// }
