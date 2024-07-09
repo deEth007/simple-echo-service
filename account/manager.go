@@ -112,7 +112,6 @@ func Main() cli.ActionFunc {
 		cliConfig := ReadCLIConfig(ctx)
 
 		mgr, err := newAccountMgr(cliConfig)
-		fmt.Printf("%+v\n", cliConfig)
 		if err != nil {
 			return err
 		}
