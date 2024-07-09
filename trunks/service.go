@@ -5,12 +5,11 @@ import (
 	"math/big"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v3"
 
-	"github.com/tokamak-network/tokamak-trunks/nmgr"
+	"github.com/tokamak-network/tokamak-trunks/account"
 	"github.com/tokamak-network/tokamak-trunks/reporter"
 	"github.com/tokamak-network/tokamak-trunks/utils"
 )
@@ -42,6 +41,7 @@ func NewService(cfg *CLIConfig) (*TrunksErvice, error) {
 		return nil, err
 	}
 
+	accounts := account.GetAccounts()
 	trunks, err := initTrunks(cfg, accounts, scenario)
 	if err != nil {
 		return nil, err
@@ -72,17 +72,7 @@ func initScenario(path string) (*Scenario, error) {
 	return &scenario, nil
 }
 
-func initAccounts(count uint) *Accounts {
-	return GenerateAccounts(count)
-}
-
-func initBaseNodeManager(cfg *CLIConfig, accounts *Accounts) (*nmgr.BaseNodeManager, error) {
-	return nmgr.NewBaseNodeManager(
-		nmgr.NewConfig(cfg.NodeMgr, accounts.GetAddresses()...),
-	)
-}
-
-func initTrunks(cfg *CLIConfig, accounts *Accounts, scenario *Scenario) (*Trunks, error) {
+func initTrunks(cfg *CLIConfig, accounts *account.Accounts, scenario *Scenario) (*Trunks, error) {
 	return &Trunks{
 		wg: new(sync.WaitGroup),
 

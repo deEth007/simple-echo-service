@@ -19,14 +19,15 @@ type Accounts struct {
 	List []Account
 }
 
-func GenerateAccounts(count uint) *Accounts {
+func GetAccounts() *Accounts {
 	accounts := &Accounts{}
-	for i := uint(0); i < count; i++ {
-		newPrivKey, _ := crypto.GenerateKey()
-		address := getAddress(newPrivKey)
+	stringPrivateKeys, _ := read(getAccountFilePath())
+	for _, key := range stringPrivateKeys {
+		privateKey, _ := stringToPrivateKey(key)
+		address := getAddress(privateKey)
 		newAccount := Account{
 			Address: address,
-			PrivKey: newPrivKey,
+			PrivKey: privateKey,
 		}
 		accounts.List = append(accounts.List, newAccount)
 	}

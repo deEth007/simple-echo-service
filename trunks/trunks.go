@@ -5,8 +5,10 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/tokamak-network/tokamak-trunks/reporter"
 	vegeta "github.com/tsenart/vegeta/v12/lib"
+
+	"github.com/tokamak-network/tokamak-trunks/account"
+	"github.com/tokamak-network/tokamak-trunks/reporter"
 )
 
 type Trunks struct {
@@ -21,7 +23,7 @@ type Trunks struct {
 	L2ChainId   *big.Int
 	L2BlockTime *big.Int
 
-	Accounts *Accounts
+	Accounts *account.Accounts
 }
 
 func (t *Trunks) Start() error {
