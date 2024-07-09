@@ -200,7 +200,8 @@ func (aMgr *manager) faucet() error {
 
 	masterDistributor, err := newDistributor("distributor-master", aMgr.RpcURL, masterPrivateKey)
 	amount := new(big.Int)
-	amount.SetString("1000000000000000000000", 10)
+	// 500,000
+	amount.SetString("500000000000000000000000", 10)
 
 	var wg sync.WaitGroup
 
@@ -234,7 +235,8 @@ func (aMgr *manager) faucet() error {
 
 	for _, d := range distributors {
 		amount := new(big.Int)
-		amount.SetString("10000000000000000000", 10)
+		// 1,000
+		amount.SetString("1000000000000000000000", 10)
 		wg.Add(1)
 		go func(dtb distributor) {
 			defer wg.Done()
