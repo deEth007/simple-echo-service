@@ -1,11 +1,10 @@
 package flags
 
 import (
-	"github.com/tokamak-network/tokamak-trunks/nmgr"
+	"github.com/urfave/cli/v2"
+
 	"github.com/tokamak-network/tokamak-trunks/reporter"
 	"github.com/tokamak-network/tokamak-trunks/utils"
-
-	"github.com/urfave/cli/v2"
 )
 
 const envPrefix = "TOKAMAK_TRUNKS"
@@ -77,7 +76,6 @@ var (
 )
 
 var Flags = []cli.Flag{
-	NodeManagerEnableFlag,
 	L1RPCFlag,
 	L2RPCFlag,
 	ScenarioFileFlag,
@@ -92,6 +90,5 @@ var Flags = []cli.Flag{
 }
 
 func init() {
-	Flags = append(Flags, nmgr.CLIFlags(envPrefix)...)
 	Flags = append(Flags, reporter.CLIFlags(envPrefix)...)
 }

@@ -7,6 +7,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+// NOTE: This is deprecated. go to account package
+
 type Account struct {
 	Address common.Address
 	PrivKey *ecdsa.PrivateKey
