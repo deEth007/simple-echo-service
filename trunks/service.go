@@ -7,16 +7,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/urfave/cli/v2"
+	"gopkg.in/yaml.v3"
+
 	"github.com/tokamak-network/tokamak-trunks/nmgr"
 	"github.com/tokamak-network/tokamak-trunks/reporter"
 	"github.com/tokamak-network/tokamak-trunks/utils"
-	"github.com/urfave/cli/v2"
-	"gopkg.in/yaml.v3"
 )
 
 type TrunksErvice struct {
-	NodeMgr nmgr.NodeManager
-	Trunks  *Trunks
+	Trunks *Trunks
 }
 
 func Main() cli.ActionFunc {
@@ -42,24 +42,13 @@ func NewService(cfg *CLIConfig) (*TrunksErvice, error) {
 		return nil, err
 	}
 
-	var accounts *Accounts
-	var nodeMgr *nmgr.BaseNodeManager
-	if cfg.NodeManagerEnable {
-		accounts = initAccounts(scenario.Accounts)
-		nodeMgr, err = initBaseNodeManager(cfg, accounts)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	trunks, err := initTrunks(cfg, accounts, scenario)
 	if err != nil {
 		return nil, err
 	}
 
 	return &TrunksErvice{
-		NodeMgr: nodeMgr,
-		Trunks:  trunks,
+		Trunks: trunks,
 	}, nil
 }
 
@@ -111,16 +100,7 @@ func initTrunks(cfg *CLIConfig, accounts *Accounts, scenario *Scenario) (*Trunks
 }
 
 func (ts *TrunksErvice) Start() error {
-	if ts.NodeMgr != nil {
-		err := ts.NodeMgr.Start()
-		if err != nil {
-			return err
-		}
-	}
-	time.Sleep(10 * time.Second)
-
 	ts.Trunks.Start()
-
 	return nil
 }
 
@@ -129,5 +109,4 @@ func (ts *TrunksErvice) Stop() {
 	tReport.RecordTPS()
 	reporter.GetReportManager().Report(reporter.TrunksReporter(), "test")
 	reporter.GetReportManager().Close()
-	ts.NodeMgr.Destroy()
 }
