@@ -7,8 +7,7 @@ import (
 )
 
 type Scenario struct {
-	Name     string `yaml:"name"`
-	Accounts uint   `yaml:"accounts"`
+	Name string `yaml:"name"`
 
 	Actions []Action `yaml:"actions"`
 }

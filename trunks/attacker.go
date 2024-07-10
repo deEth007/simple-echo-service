@@ -51,10 +51,6 @@ func MakeAttacker(action *Action, t *Trunks) (Attacker, error) {
 	if action.Method == "transaction" {
 		rpc := t.L2RPC
 		chainId := t.L2ChainId
-		if action.Bridge == "deposit" {
-			rpc = t.L1RPC
-			chainId = t.L1ChainId
-		}
 		client, _ := ethclient.Dial(rpc)
 		tOption := &TargetOption{
 			RPC: rpc,
