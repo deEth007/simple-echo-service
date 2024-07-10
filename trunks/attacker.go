@@ -164,11 +164,9 @@ func waitTxConfirm(
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-queryTicker.C:
-			receiept, err := client.TransactionReceipt(ctx, txHash)
-			if receiept != nil {
-				return receiept, err
+			if receiept, _ := client.TransactionReceipt(ctx, txHash); receiept != nil {
+				return receiept, nil
 			}
-			return receiept, nil
 		}
 	}
 }
