@@ -76,13 +76,24 @@ func (ca *CallAttacker) Attack() <-chan *vegeta.Result {
 	fmt.Println("call attack start")
 	attacker := vegeta.NewAttacker()
 	results := make(chan *vegeta.Result)
+	attackCount := 0
+	var wg sync.WaitGroup
 
+	wg.Add(1)
 	go func() {
-		defer close(results)
+		defer wg.Done()
 		for res := range attacker.Attack(ca.Targeter, ca.Pace, ca.Duration, "call") {
+			attackCount++
+			fmt.Printf("\rAttack count: %d", attackCount)
 			results <- res
 		}
 	}()
+
+	go func() {
+		wg.Wait()
+		defer close(results)
+	}()
+
 	return results
 }
 
@@ -91,15 +102,15 @@ func (ta *TransactionAttacker) Attack() <-chan *vegeta.Result {
 	attacker := vegeta.NewAttacker()
 	results := make(chan *vegeta.Result)
 	reporter := reporter.GetTrunksReport()
-	count_attack := 0
+	attackCount := 0
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for res := range attacker.Attack(ta.Targeter, ta.Pace, ta.Duration, "transaction attack") {
-			count_attack++
-			fmt.Printf("\rAttack count: %d", count_attack)
+			attackCount++
+			fmt.Printf("\rAttack count: %d", attackCount)
 
 			txHash, jsonErr := txHashFromResult(res)
 			if jsonErr != nil {
