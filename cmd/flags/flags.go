@@ -1,22 +1,15 @@
 package flags
 
 import (
-	"github.com/tokamak-network/tokamak-trunks/nmgr"
+	"github.com/urfave/cli/v2"
+
 	"github.com/tokamak-network/tokamak-trunks/reporter"
 	"github.com/tokamak-network/tokamak-trunks/utils"
-
-	"github.com/urfave/cli/v2"
 )
 
 const envPrefix = "TOKAMAK_TRUNKS"
 
 var (
-	NodeManagerEnableFlag = &cli.BoolFlag{
-		Name:    "node-manager-enable",
-		Usage:   "Active node manager",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "NODE_MANAGER_ENABLE"),
-		Value:   false,
-	}
 	L1RPCFlag = &cli.StringFlag{
 		Name:    "l1-rpc-url",
 		Usage:   "Connect L1 chain",
@@ -44,54 +37,16 @@ var (
 		Usage:   "L2 chain id",
 		EnvVars: utils.PrefixEnvVars(envPrefix, "L2_CHAIN_ID"),
 	}
-	L1StandardBrige = &cli.StringFlag{
-		Name:    "l1-standard-bridge",
-		Usage:   "L1StandardBrige Address",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "L1_STANDARD_BRIDGE"),
-	}
-	L2StandardBrige = &cli.StringFlag{
-		Name:    "l2-standard-bridge",
-		Usage:   "L2StandardBrige Address",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "L2_STANDARD_BRIDGE"),
-	}
-	L2ToL1MessagePasser = &cli.StringFlag{
-		Name:    "l2-to-l1-message-passer",
-		Usage:   "L2ToL1MessagePasser Address",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "L2_TO_L1_MESSAGE_PASSER"),
-	}
-	Batcher = &cli.StringFlag{
-		Name:    "batcher",
-		Usage:   "Batcher Address",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "BATCHER"),
-	}
-	Proposer = &cli.StringFlag{
-		Name:    "proposer",
-		Usage:   "Proposer Address",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "PROPOSER"),
-	}
-	SequencerFeeVault = &cli.StringFlag{
-		Name:    "sequencer-fee-vault",
-		Usage:   "SequencerFeeVault Address",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "SEQUENCER_FEE_VAULT"),
-	}
 )
 
 var Flags = []cli.Flag{
-	NodeManagerEnableFlag,
 	L1RPCFlag,
 	L2RPCFlag,
 	ScenarioFileFlag,
 	L1ChainIdFlag,
 	L2ChainIdFlag,
-	L1StandardBrige,
-	L2StandardBrige,
-	L2ToL1MessagePasser,
-	Batcher,
-	Proposer,
-	SequencerFeeVault,
 }
 
 func init() {
-	Flags = append(Flags, nmgr.CLIFlags(envPrefix)...)
 	Flags = append(Flags, reporter.CLIFlags(envPrefix)...)
 }

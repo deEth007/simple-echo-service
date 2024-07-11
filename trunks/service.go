@@ -5,18 +5,17 @@ import (
 	"math/big"
 	"os"
 	"sync"
-	"time"
 
-	"github.com/tokamak-network/tokamak-trunks/nmgr"
-	"github.com/tokamak-network/tokamak-trunks/reporter"
-	"github.com/tokamak-network/tokamak-trunks/utils"
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v3"
+
+	"github.com/tokamak-network/tokamak-trunks/account"
+	"github.com/tokamak-network/tokamak-trunks/reporter"
+	"github.com/tokamak-network/tokamak-trunks/utils"
 )
 
 type TrunksErvice struct {
-	NodeMgr nmgr.NodeManager
-	Trunks  *Trunks
+	Trunks *Trunks
 }
 
 func Main() cli.ActionFunc {
@@ -42,24 +41,14 @@ func NewService(cfg *CLIConfig) (*TrunksErvice, error) {
 		return nil, err
 	}
 
-	var accounts *Accounts
-	var nodeMgr *nmgr.BaseNodeManager
-	if cfg.NodeManagerEnable {
-		accounts = initAccounts(scenario.Accounts)
-		nodeMgr, err = initBaseNodeManager(cfg, accounts)
-		if err != nil {
-			return nil, err
-		}
-	}
-
+	accounts := account.GetAccounts()
 	trunks, err := initTrunks(cfg, accounts, scenario)
 	if err != nil {
 		return nil, err
 	}
 
 	return &TrunksErvice{
-		NodeMgr: nodeMgr,
-		Trunks:  trunks,
+		Trunks: trunks,
 	}, nil
 }
 
@@ -83,17 +72,7 @@ func initScenario(path string) (*Scenario, error) {
 	return &scenario, nil
 }
 
-func initAccounts(count uint) *Accounts {
-	return GenerateAccounts(count)
-}
-
-func initBaseNodeManager(cfg *CLIConfig, accounts *Accounts) (*nmgr.BaseNodeManager, error) {
-	return nmgr.NewBaseNodeManager(
-		nmgr.NewConfig(cfg.NodeMgr, accounts.GetAddresses()...),
-	)
-}
-
-func initTrunks(cfg *CLIConfig, accounts *Accounts, scenario *Scenario) (*Trunks, error) {
+func initTrunks(cfg *CLIConfig, accounts *account.Accounts, scenario *Scenario) (*Trunks, error) {
 	return &Trunks{
 		wg: new(sync.WaitGroup),
 
@@ -111,23 +90,9 @@ func initTrunks(cfg *CLIConfig, accounts *Accounts, scenario *Scenario) (*Trunks
 }
 
 func (ts *TrunksErvice) Start() error {
-	if ts.NodeMgr != nil {
-		err := ts.NodeMgr.Start()
-		if err != nil {
-			return err
-		}
-	}
-	time.Sleep(10 * time.Second)
-
 	ts.Trunks.Start()
-
 	return nil
 }
 
 func (ts *TrunksErvice) Stop() {
-	tReport := reporter.GetTrunksReport()
-	tReport.RecordTPS()
-	reporter.GetReportManager().Report(reporter.TrunksReporter(), "test")
-	reporter.GetReportManager().Close()
-	ts.NodeMgr.Destroy()
 }

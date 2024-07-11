@@ -3,18 +3,17 @@ package trunks
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"math/big"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/tokamak-network/tokamak-trunks/reporter"
-	vegeta "github.com/tsenart/vegeta/v12/lib"
-	"golang.org/x/sync/semaphore"
-
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	vegeta "github.com/tsenart/vegeta/v12/lib"
+
+	"github.com/tokamak-network/tokamak-trunks/reporter"
 )
 
 type Attacker interface {
@@ -52,10 +51,6 @@ func MakeAttacker(action *Action, t *Trunks) (Attacker, error) {
 	if action.Method == "transaction" {
 		rpc := t.L2RPC
 		chainId := t.L2ChainId
-		if action.Bridge == "deposit" {
-			rpc = t.L1RPC
-			chainId = t.L1ChainId
-		}
 		client, _ := ethclient.Dial(rpc)
 		tOption := &TargetOption{
 			RPC: rpc,
@@ -81,86 +76,133 @@ func (ca *CallAttacker) Attack() <-chan *vegeta.Result {
 	fmt.Println("call attack start")
 	attacker := vegeta.NewAttacker()
 	results := make(chan *vegeta.Result)
+	attackCount := 0
+	var wg sync.WaitGroup
 
+	wg.Add(1)
 	go func() {
-		defer close(results)
+		defer wg.Done()
 		for res := range attacker.Attack(ca.Targeter, ca.Pace, ca.Duration, "call") {
+			attackCount++
+			fmt.Printf("\rAttack count: %d", attackCount)
 			results <- res
 		}
 	}()
+
+	go func() {
+		wg.Wait()
+		defer close(results)
+	}()
+
 	return results
 }
 
 func (ta *TransactionAttacker) Attack() <-chan *vegeta.Result {
 	fmt.Println("transaction attack start")
 	attacker := vegeta.NewAttacker()
-	sem := semaphore.NewWeighted(3)
 	results := make(chan *vegeta.Result)
+	reporter := reporter.GetTrunksReport()
+	attackCount := 0
+	var wg sync.WaitGroup
 
+	wg.Add(1)
 	go func() {
-		wg := new(sync.WaitGroup)
-		defer close(results)
+		defer wg.Done()
 		for res := range attacker.Attack(ta.Targeter, ta.Pace, ta.Duration, "transaction attack") {
-			txHash, err := txHashFromResult(res)
-			if err != nil {
-				res.Error = err.Error()
+			attackCount++
+			fmt.Printf("\rAttack count: %d", attackCount)
+
+			txHash, jsonErr := txHashFromResult(res)
+			if jsonErr != nil {
+				res.Error = fmt.Sprintf("err: %s", jsonErr.Message)
+				res.Code = uint16(jsonErr.Code)
+				results <- res
 				continue
 			}
-			sem.Acquire(context.Background(), 1)
+
 			wg.Add(1)
-			go func(rr *vegeta.Result) {
-				defer sem.Release(1)
+			go func(txHash common.Hash, result *vegeta.Result) {
 				defer wg.Done()
-				err := waitTxConfirm(txHash, rr, ta.Client)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*36)
+				defer cancel()
+				receipt, err := waitTxConfirm(ctx, ta.Client, txHash)
+				receiptTime := result.Timestamp.Add(time.Since(result.Timestamp))
+				latency := receiptTime.Sub(result.Timestamp)
+				result.Latency += latency
+
 				if err != nil {
-					return
+					result.Error = err.Error()
+					result.Code = 0
 				}
-				results <- rr
-			}(res)
-			wg.Wait()
+				if receipt != nil {
+					switch receipt.Status {
+					case 1:
+						reporter.RecordReceipt(receipt)
+						reporter.RecordConfirmRequest()
+					case 0:
+						result.Error = "transaction confirmed faiure"
+						result.Code = 0
+					}
+				}
+
+				results <- result
+			}(txHash, res)
 		}
+		fmt.Println()
 	}()
+
+	go func() {
+		wg.Wait()
+		defer close(results)
+	}()
+
 	return results
 }
 
-func waitTxConfirm(txHash common.Hash, result *vegeta.Result, client *ethclient.Client) error {
-	reporter := reporter.GetTrunksReport()
-	var blockNumber *big.Int
-
+func waitTxConfirm(
+	ctx context.Context,
+	client *ethclient.Client,
+	txHash common.Hash,
+) (*types.Receipt, error) {
+	queryTicker := time.NewTicker(500 * time.Millisecond)
+	defer queryTicker.Stop()
 	for {
-		receipt, err := client.TransactionReceipt(context.Background(), txHash)
-		if err == nil {
-			blockNumber = receipt.BlockNumber
-			reporter.RecordStartToLastBlock(receipt)
-			reporter.RecordL1GasUsed(receipt)
-			reporter.RecordL1GasFee(receipt)
-			reporter.RecordL2GasUsed(receipt)
-			reporter.RecordL2GasFee(receipt)
-			reporter.RecordConfirmRequest()
-			break
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-queryTicker.C:
+			if receiept, _ := client.TransactionReceipt(ctx, txHash); receiept != nil {
+				return receiept, nil
+			}
 		}
-		time.Sleep(time.Second * 2)
 	}
-	block, err := client.BlockByNumber(context.Background(), blockNumber)
-	if err != nil {
-		return err
-	}
-	blockTime := block.Time()
-	blockTimeToUnix := time.Unix(int64(blockTime), 0)
-
-	result.Latency = blockTimeToUnix.Sub(result.Timestamp)
-
-	return nil
 }
 
-func txHashFromResult(r *vegeta.Result) (common.Hash, error) {
-	body := map[string]interface{}{}
-	json.Unmarshal(r.Body, &body)
+type jsonrpcMessage struct {
+	Version string          `json:"jsonrpc,omitempty"`
+	ID      json.RawMessage `json:"id,omitempty"`
+	Method  string          `json:"method,omitempty"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	Error   *jsonError      `json:"error,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+}
 
-	if _, exist := body["error"]; exist {
-		return common.Hash{}, errors.New("not exist result")
+type jsonError struct {
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
+}
+
+func txHashFromResult(r *vegeta.Result) (common.Hash, *jsonError) {
+	message := jsonrpcMessage{}
+	json.Unmarshal(r.Body, &message)
+
+	if message.Error != nil {
+		return common.Hash{}, message.Error
 	}
 
-	txHash := common.HexToHash(body["result"].(string))
+	stringTxHash := strings.Trim(string(message.Result), `"`)
+	txHash := common.HexToHash(stringTxHash)
+
 	return txHash, nil
 }

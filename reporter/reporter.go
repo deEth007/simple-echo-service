@@ -1,6 +1,7 @@
 package reporter
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math/big"
@@ -9,28 +10,11 @@ import (
 	"text/tabwriter"
 
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/params"
 	vegeta "github.com/tsenart/vegeta/v12/lib"
 )
 
-// L1 Gas는 L2에서 지출한 것만 기록 즉, Withdrawal 트랜잭션에서 발생한 L1가스 fee 기록
-
-// Deposit
-// L2StandardBridge : 0x4200000000000000000000000000000000000010
-// Event : DepositFinalized(address indexed l1Token, address indexed l2Token, address indexed from, address to, uint256 amount, bytes extraData)
-// 해당 Event를 가진 트랜잭션을 검색할 수 있나? -> 그러면 L2에서 사용된 Gas를 알 수 있음 (최종 결과 합산만) -> 가능!
-
-// Withdrawal
-// 총 출금 개수는 MessagePassed 개수를 기록하면 됨
-// L2ToL1MessagePasser: 0x4200000000000000000000000000000000000016
-// Event: MessagePassed(uint256 indexed nonce, address indexed sender, address indexed target, uint256 value, uint256 gasLimit, bytes data, bytes32 withdrawalHash)
-// MessagePassed 이벤트가 발생하면 L2 측에서는 출금에 성공한 것이 됨
-// 그냥 컨펌 기다리면 됨
-
-// 총 batch 제출 수? -> batcher 계정 조하면 이더랑 제출 수 조회 가능
-// 총 proposer "                "
-
-// SequencerFeeVault 0x4200000000000000000000000000000000000011
 var once sync.Once
 
 type reportManager struct {
@@ -58,28 +42,38 @@ func GetReportManager() *reportManager {
 }
 
 type reports struct {
-	tps                       *big.Int
-	totalConfirmTransactions  *big.Int
-	l1GasUsed                 *big.Int
-	l2GasUsed                 *big.Int
-	l1GasFee                  *big.Int
-	l2GasFee                  *big.Int
-	batcherConsumeEther       *big.Int
-	proposerConsumeEther      *big.Int
-	totalSequncerConsumeEther *big.Int
-	startBlockNumber          *big.Int
-	endBlockNumber            *big.Int
-	l2BlockTime               *big.Int
+	tps                      *big.Int
+	totalConfirmTransactions *big.Int
+	l1GasUsed                *big.Int
+	l2GasUsed                *big.Int
+	blobGasUsed              *big.Int
+	blobFee                  *big.Int
+	l1Fee                    *big.Int
+	l2Fee                    *big.Int
+	l1GasPrice               *big.Int
+	blobGasPrice             *big.Int
+	l2GasPrice               *big.Int
+	cumulativeL1GasPrice     *big.Int
+	cumulativeBlobGasPrice   *big.Int
+	cumulativeL2GasPrice     *big.Int
+	startBlockNumber         *big.Int
+	endBlockNumber           *big.Int
+	l2BlockTime              *big.Int
+	receiptCount             uint64
+	blobTxCount              uint64
 }
 
-var trunksReport *reports
-var first bool
+var (
+	trunksReport *reports
+	first        bool
+)
 
-func (r *reports) RecordTPS() {
-	sb := new(big.Int).Set(r.startBlockNumber)
-	eb := new(big.Int).Set(r.endBlockNumber)
-	tb := eb.Sub(eb, sb)
-	duration := tb.Mul(tb, r.l2BlockTime)
+func (r *reports) RecordTPS(client *ethclient.Client) {
+	startBlock, _ := client.BlockByNumber(context.Background(), r.startBlockNumber)
+	endBlock, _ := client.BlockByNumber(context.Background(), r.endBlockNumber)
+
+	d := endBlock.Time() - startBlock.Time()
+	duration := new(big.Int).SetUint64(d)
 
 	tr := new(big.Int).Set(r.totalConfirmTransactions)
 	if duration.Cmp(big.NewInt(0)) != 0 {
@@ -91,7 +85,24 @@ func (r *reports) RecordConfirmRequest() {
 	r.totalConfirmTransactions.Add(r.totalConfirmTransactions, big.NewInt(1))
 }
 
-func (r *reports) RecordStartToLastBlock(receipt *types.Receipt) {
+func (r *reports) RecordReceipt(receipt *types.Receipt) {
+	r.receiptCount++
+	if receipt.Type == types.BlobTxType {
+		r.blobTxCount++
+		r.recordBlobGasPrice(receipt)
+		r.recordBlobGasUsed(receipt)
+		r.recordBlobFee(receipt)
+	}
+	r.recordStartToLastBlock(receipt)
+	r.recordL1GasUsed(receipt)
+	r.recordL1Fee(receipt)
+	r.recordL2GasUsed(receipt)
+	r.recordL2Fee(receipt)
+	r.recordL1GasPrice(receipt)
+	r.recordL2GasPrice(receipt)
+}
+
+func (r *reports) recordStartToLastBlock(receipt *types.Receipt) {
 	if first {
 		r.startBlockNumber.Set(receipt.BlockNumber)
 		first = false
@@ -105,21 +116,57 @@ func (r *reports) RecordStartToLastBlock(receipt *types.Receipt) {
 	}
 }
 
-func (r *reports) RecordL1GasUsed(receipt *types.Receipt) {
+func (r *reports) recordBlobGasUsed(receipt *types.Receipt) {
+	r.blobGasUsed.Add(r.blobGasUsed, new(big.Int).SetUint64(receipt.BlobGasUsed))
+}
+
+func (r *reports) recordBlobFee(receipt *types.Receipt) {
+	blobFee := receipt.BlobGasUsed * receipt.BlobGasPrice.Uint64()
+	r.blobFee.Add(r.blobFee, new(big.Int).SetUint64(blobFee))
+}
+
+func (r *reports) recordL1GasUsed(receipt *types.Receipt) {
 	r.l1GasUsed.Add(r.l1GasUsed, receipt.L1GasUsed)
 }
 
-func (r *reports) RecordL2GasUsed(receipt *types.Receipt) {
+func (r *reports) recordL2GasUsed(receipt *types.Receipt) {
 	r.l2GasUsed.Add(r.l2GasUsed, new(big.Int).SetUint64(receipt.GasUsed))
 }
 
-func (r *reports) RecordL1GasFee(receipt *types.Receipt) {
-	r.l1GasFee.Add(r.l1GasFee, receipt.L1Fee)
+func (r *reports) recordL1Fee(receipt *types.Receipt) {
+	r.l1Fee.Add(r.l1Fee, receipt.L1Fee)
 }
 
-func (r *reports) RecordL2GasFee(receipt *types.Receipt) {
-	l2GasFee := receipt.EffectiveGasPrice.Mul(receipt.EffectiveGasPrice, new(big.Int).SetUint64(receipt.GasUsed))
-	r.l2GasFee.Add(r.l2GasFee, l2GasFee)
+func (r *reports) recordL2Fee(receipt *types.Receipt) {
+	l2GasFee := big.NewInt(0)
+	l2GasFee.Mul(
+		receipt.EffectiveGasPrice,
+		new(big.Int).SetUint64(receipt.GasUsed),
+	)
+
+	r.l2Fee.Add(r.l2Fee, l2GasFee)
+}
+
+func (r *reports) recordL1GasPrice(receipt *types.Receipt) {
+	r.cumulativeL1GasPrice.Add(r.cumulativeL1GasPrice, receipt.L1GasPrice)
+}
+
+func (r *reports) recordBlobGasPrice(receipt *types.Receipt) {
+	r.cumulativeBlobGasPrice.Add(r.cumulativeBlobGasPrice, receipt.BlobGasPrice)
+}
+
+func (r *reports) recordL2GasPrice(receipt *types.Receipt) {
+	r.cumulativeL2GasPrice.Add(r.cumulativeL2GasPrice, receipt.EffectiveGasPrice)
+}
+
+func (r *reports) calcGasPrices() {
+	if r.receiptCount > 0 {
+		r.l1GasPrice.Quo(r.cumulativeL1GasPrice, new(big.Int).SetUint64(r.receiptCount))
+		r.l2GasPrice.Quo(r.cumulativeL2GasPrice, new(big.Int).SetUint64(r.receiptCount))
+	}
+	if r.blobTxCount > 0 {
+		r.blobGasPrice.Quo(r.cumulativeBlobGasPrice, new(big.Int).SetUint64(r.blobTxCount))
+	}
 }
 
 func weiToEther(wei *big.Int) *big.Float {
@@ -127,6 +174,10 @@ func weiToEther(wei *big.Int) *big.Float {
 	wetiToEtherFactor := new(big.Float).SetInt(big.NewInt(params.Ether))
 	ether.Quo(ether, wetiToEtherFactor)
 	return ether
+}
+
+func weiToGwei(wei *big.Int) *big.Float {
+	return new(big.Float).Quo(new(big.Float).SetInt(wei), big.NewFloat(params.GWei))
 }
 
 func GetTrunksReport() *reports {
@@ -137,18 +188,23 @@ func InitReporter(cfg *Config) {
 	once.Do(
 		func() {
 			trunksReport = &reports{
-				tps:                       big.NewInt(0),
-				totalConfirmTransactions:  big.NewInt(0),
-				l1GasUsed:                 big.NewInt(0),
-				l2GasUsed:                 big.NewInt(0),
-				l1GasFee:                  big.NewInt(0),
-				l2GasFee:                  big.NewInt(0),
-				batcherConsumeEther:       big.NewInt(0),
-				proposerConsumeEther:      big.NewInt(0),
-				startBlockNumber:          big.NewInt(0),
-				totalSequncerConsumeEther: big.NewInt(0),
-				endBlockNumber:            big.NewInt(0),
-				l2BlockTime:               cfg.l2BlockTime,
+				tps:                      big.NewInt(0),
+				totalConfirmTransactions: big.NewInt(0),
+				l1GasUsed:                big.NewInt(0),
+				l2GasUsed:                big.NewInt(0),
+				blobGasUsed:              big.NewInt(0),
+				blobFee:                  big.NewInt(0),
+				l1Fee:                    big.NewInt(0),
+				l2Fee:                    big.NewInt(0),
+				l1GasPrice:               big.NewInt(0),
+				blobGasPrice:             big.NewInt(0),
+				l2GasPrice:               big.NewInt(0),
+				cumulativeL1GasPrice:     big.NewInt(0),
+				cumulativeBlobGasPrice:   big.NewInt(0),
+				cumulativeL2GasPrice:     big.NewInt(0),
+				startBlockNumber:         big.NewInt(0),
+				endBlockNumber:           big.NewInt(0),
+				l2BlockTime:              cfg.l2BlockTime,
 			}
 			file, _ := os.Create(cfg.filename)
 			reportMgr = &reportManager{
@@ -160,21 +216,34 @@ func InitReporter(cfg *Config) {
 }
 
 func (r *reports) report(w io.Writer) error {
+	r.calcGasPrices()
+
 	const fmtstr = "TPS\t%d\n" +
 		"Total Confirmed Tx\t%d\n" +
-		"L1GasUsed\t%d\n" +
-		"L2GasUSed\t%d\n" +
-		"L1GasFee\t%d Wei (%f ETH)\n" +
-		"L2GasFee\t%d Wei (%f ETH)\n" +
+		"First Confirmed Block Number\t%d\n" +
+		"Last Confirmed Block Number\t%d\n" +
+		"Total Using Gas\n" +
+		"  L1Gas\t%d\n" +
+		"  BlobGas\t%d\n" +
+		"  L2Gas\t%d\n" +
+		"Average Gas Price\n" +
+		"  L1Gas\t%d Wei (%f Gwei)\n" +
+		"  BlobGas\t%d Wei (%f Gwei)\n" +
+		"  L2Gas\t%d Wei (%f Gwei)\n" +
+		"Total Fee\n" +
+		"  L1Fee\t%d Wei (%f ETH)\n" +
+		"  BlobFee\t%d Wei (%f ETH)\n" +
+		"  L2Fee\t%d Wei (%f ETH)\n" +
 		"L2BlockTime\t%ds\n"
 	tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', tabwriter.StripEscape)
 	if _, err := fmt.Fprintf(tw, fmtstr,
 		r.tps,
 		r.totalConfirmTransactions,
-		r.l1GasUsed,
-		r.l2GasUsed,
-		r.l1GasFee, weiToEther(r.l1GasFee),
-		r.l2GasFee, weiToEther(r.l2GasFee),
+		r.startBlockNumber,
+		r.endBlockNumber,
+		r.l1GasUsed, r.blobGasUsed, r.l2GasUsed,
+		r.l1GasPrice, weiToGwei(r.l1GasPrice), r.blobGasPrice, weiToGwei(r.blobGasPrice), r.l2GasPrice, weiToGwei(r.l2GasPrice),
+		r.l1Fee, weiToEther(r.l1Fee), r.blobFee, weiToEther(r.blobFee), r.l2Fee, weiToEther(r.l2Fee),
 		r.l2BlockTime,
 	); err != nil {
 		return err

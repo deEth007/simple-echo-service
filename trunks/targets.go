@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"math/big"
 
-	vegeta "github.com/tsenart/vegeta/v12/lib"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	vegeta "github.com/tsenart/vegeta/v12/lib"
+
+	"github.com/tokamak-network/tokamak-trunks/account"
 )
 
 var CALL_METHOD []string = []string{
@@ -26,7 +27,7 @@ type TargetOption struct {
 }
 
 type TransactionOption struct {
-	Accounts *Accounts
+	Accounts *account.Accounts
 	ChainId  *big.Int
 	To       string
 	Client   *ethclient.Client
@@ -48,13 +49,17 @@ func CallTargeter(opts *TargetOption) vegeta.Targeter {
 		}
 
 		roundRobin = (roundRobin + 1) % len(CALL_METHOD)
-		body := fmt.Sprintf(`{"jsonrpc": "2.0", "method":"%s", "params": [], "id": 0}`, CALL_METHOD[roundRobin])
+		body := fmt.Sprintf(
+			`{"jsonrpc": "2.0", "method":"%s", "params": [], "id": 0}`,
+			CALL_METHOD[roundRobin],
+		)
 		tgt.Body = []byte(body)
 		return nil
 	}
 }
 
-var value *big.Int = big.NewInt(100000000000000000)
+// 0.01 ETH
+var value *big.Int = big.NewInt(10000000000000000)
 
 func TransactionTargeter(opts *TargetOption) vegeta.Targeter {
 	roundRobin := -1
@@ -105,7 +110,10 @@ func TransactionTargeter(opts *TargetOption) vegeta.Targeter {
 		}
 
 		rawTxHex := hex.EncodeToString(rawTxBytes)
-		body := fmt.Sprintf(`{"jsonrpc":"2.0","method":"eth_sendRawTransaction","params":["0x%s"],"id":1}`, rawTxHex)
+		body := fmt.Sprintf(
+			`{"jsonrpc":"2.0","method":"eth_sendRawTransaction","params":["0x%s"],"id":1}`,
+			rawTxHex,
+		)
 
 		tgt.Method = "POST"
 		tgt.URL = RPC
