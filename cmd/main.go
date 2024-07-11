@@ -16,11 +16,11 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "tokamak-trunks"
 	app.Usage = "tokamak overload test tool"
-	app.Flags = flags.Flags
 	app.Commands = []*cli.Command{
 		{
 			Name:   "start",
 			Usage:  "start load test",
+			Flags:  flags.Flags,
 			Action: trunks.Main(),
 		},
 		{

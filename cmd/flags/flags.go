@@ -43,36 +43,6 @@ var (
 		Usage:   "L2 chain id",
 		EnvVars: utils.PrefixEnvVars(envPrefix, "L2_CHAIN_ID"),
 	}
-	L1StandardBrige = &cli.StringFlag{
-		Name:    "l1-standard-bridge",
-		Usage:   "L1StandardBrige Address",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "L1_STANDARD_BRIDGE"),
-	}
-	L2StandardBrige = &cli.StringFlag{
-		Name:    "l2-standard-bridge",
-		Usage:   "L2StandardBrige Address",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "L2_STANDARD_BRIDGE"),
-	}
-	L2ToL1MessagePasser = &cli.StringFlag{
-		Name:    "l2-to-l1-message-passer",
-		Usage:   "L2ToL1MessagePasser Address",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "L2_TO_L1_MESSAGE_PASSER"),
-	}
-	Batcher = &cli.StringFlag{
-		Name:    "batcher",
-		Usage:   "Batcher Address",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "BATCHER"),
-	}
-	Proposer = &cli.StringFlag{
-		Name:    "proposer",
-		Usage:   "Proposer Address",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "PROPOSER"),
-	}
-	SequencerFeeVault = &cli.StringFlag{
-		Name:    "sequencer-fee-vault",
-		Usage:   "SequencerFeeVault Address",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "SEQUENCER_FEE_VAULT"),
-	}
 )
 
 var Flags = []cli.Flag{
@@ -81,12 +51,6 @@ var Flags = []cli.Flag{
 	ScenarioFileFlag,
 	L1ChainIdFlag,
 	L2ChainIdFlag,
-	L1StandardBrige,
-	L2StandardBrige,
-	L2ToL1MessagePasser,
-	Batcher,
-	Proposer,
-	SequencerFeeVault,
 }
 
 func init() {
