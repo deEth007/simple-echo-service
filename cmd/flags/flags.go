@@ -10,12 +10,6 @@ import (
 const envPrefix = "TOKAMAK_TRUNKS"
 
 var (
-	NodeManagerEnableFlag = &cli.BoolFlag{
-		Name:    "node-manager-enable",
-		Usage:   "Active node manager",
-		EnvVars: utils.PrefixEnvVars(envPrefix, "NODE_MANAGER_ENABLE"),
-		Value:   false,
-	}
 	L1RPCFlag = &cli.StringFlag{
 		Name:    "l1-rpc-url",
 		Usage:   "Connect L1 chain",

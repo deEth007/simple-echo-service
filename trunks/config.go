@@ -29,12 +29,11 @@ type CLIConfig struct {
 
 func NewCLIConfig(ctx *cli.Context) *CLIConfig {
 	return &CLIConfig{
-		NodeManagerEnable: ctx.Bool(flags.NodeManagerEnableFlag.Name),
-		L1RPC:             ctx.String(flags.L1RPCFlag.Name),
-		L2RPC:             ctx.String(flags.L2RPCFlag.Name),
-		ScenarioFilePath:  ctx.Path(flags.ScenarioFileFlag.Name),
-		L1ChainId:         ctx.Uint64(flags.L1ChainIdFlag.Name),
-		L2ChainId:         ctx.Uint64(flags.L2ChainIdFlag.Name),
-		Reporter:          reporter.ReadCLIConfig(ctx),
+		L1RPC:            ctx.String(flags.L1RPCFlag.Name),
+		L2RPC:            ctx.String(flags.L2RPCFlag.Name),
+		ScenarioFilePath: ctx.Path(flags.ScenarioFileFlag.Name),
+		L1ChainId:        ctx.Uint64(flags.L1ChainIdFlag.Name),
+		L2ChainId:        ctx.Uint64(flags.L2ChainIdFlag.Name),
+		Reporter:         reporter.ReadCLIConfig(ctx),
 	}
 }
