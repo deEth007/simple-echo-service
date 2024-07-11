@@ -126,6 +126,10 @@ func (ta *TransactionAttacker) Attack() <-chan *vegeta.Result {
 				ctx, cancel := context.WithTimeout(context.Background(), time.Second*36)
 				defer cancel()
 				receipt, err := waitTxConfirm(ctx, ta.Client, txHash)
+				receiptTime := result.Timestamp.Add(time.Since(result.Timestamp))
+				latency := receiptTime.Sub(result.Timestamp)
+				result.Latency += latency
+
 				if err != nil {
 					result.Error = err.Error()
 					result.Code = 0
@@ -133,11 +137,7 @@ func (ta *TransactionAttacker) Attack() <-chan *vegeta.Result {
 				if receipt != nil {
 					switch receipt.Status {
 					case 1:
-						reporter.RecordStartToLastBlock(receipt)
-						reporter.RecordL1GasUsed(receipt)
-						reporter.RecordL1GasFee(receipt)
-						reporter.RecordL2GasUsed(receipt)
-						reporter.RecordL2GasFee(receipt)
+						reporter.RecordReceipt(receipt)
 						reporter.RecordConfirmRequest()
 					case 0:
 						result.Error = "transaction confirmed faiure"

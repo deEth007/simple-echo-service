@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/ethereum/go-ethereum/ethclient"
 	vegeta "github.com/tsenart/vegeta/v12/lib"
 
 	"github.com/tokamak-network/tokamak-trunks/account"
@@ -41,6 +42,12 @@ func (t *Trunks) Start() error {
 		metrics.Close()
 		vReporter := vegeta.NewTextReporter(&metrics)
 		reporter.GetReportManager().Report(vReporter, action.Method)
+
+		client, _ := ethclient.Dial(t.L2RPC)
+		tReport := reporter.GetTrunksReport()
+		tReport.RecordTPS(client)
+		reporter.GetReportManager().Report(reporter.TrunksReporter(), "Transaction report")
+		reporter.GetReportManager().Close()
 	}
 	return nil
 }

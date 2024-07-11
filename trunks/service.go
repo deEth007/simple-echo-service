@@ -95,8 +95,4 @@ func (ts *TrunksErvice) Start() error {
 }
 
 func (ts *TrunksErvice) Stop() {
-	tReport := reporter.GetTrunksReport()
-	tReport.RecordTPS()
-	reporter.GetReportManager().Report(reporter.TrunksReporter(), "test")
-	reporter.GetReportManager().Close()
 }
