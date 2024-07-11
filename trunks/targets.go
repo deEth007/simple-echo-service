@@ -58,7 +58,8 @@ func CallTargeter(opts *TargetOption) vegeta.Targeter {
 	}
 }
 
-var value *big.Int = big.NewInt(100000000000000000)
+// 0.01 ETH
+var value *big.Int = big.NewInt(10000000000000000)
 
 func TransactionTargeter(opts *TargetOption) vegeta.Targeter {
 	roundRobin := -1
