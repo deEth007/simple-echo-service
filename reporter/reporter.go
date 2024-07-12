@@ -68,9 +68,6 @@ var (
 	first        bool
 )
 
-/*
-TODO: 한 블록에 모든 트랜잭션이 담겼을 때 계산해야 됨. TPS 계산 방법을 다시 한번 생각해보자
-*/
 func (r *reports) RecordTPS(client *ethclient.Client) {
 	startBlock, _ := client.BlockByNumber(context.Background(), r.startBlockNumber)
 	endBlock, _ := client.BlockByNumber(context.Background(), r.endBlockNumber)
@@ -79,9 +76,12 @@ func (r *reports) RecordTPS(client *ethclient.Client) {
 	duration := new(big.Int).SetUint64(d)
 
 	tr := new(big.Int).Set(r.totalConfirmTransactions)
-	if duration.Cmp(big.NewInt(0)) != 0 {
-		r.tps = tr.Div(tr, duration)
+	if duration.Cmp(big.NewInt(0)) == 0 {
+		r.tps = tr.Div(tr, r.l2BlockTime)
+		return
 	}
+
+	r.tps = tr.Div(tr, duration)
 }
 
 func (r *reports) RecordConfirmRequest() {
