@@ -68,6 +68,9 @@ var (
 	first        bool
 )
 
+/*
+TODO: 한 블록에 모든 트랜잭션이 담겼을 때 계산해야 됨. TPS 계산 방법을 다시 한번 생각해보자
+*/
 func (r *reports) RecordTPS(client *ethclient.Client) {
 	startBlock, _ := client.BlockByNumber(context.Background(), r.startBlockNumber)
 	endBlock, _ := client.BlockByNumber(context.Background(), r.endBlockNumber)
