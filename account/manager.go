@@ -200,8 +200,8 @@ func (aMgr *manager) faucet() error {
 
 	masterDistributor, err := newDistributor("distributor-master", aMgr.RpcURL, masterPrivateKey)
 	amount := new(big.Int)
-	// 500,000
-	amount.SetString("500000000000000000000000", 10)
+	// 2,100,000
+	amount.SetString("2100000000000000000000000", 10)
 
 	var wg sync.WaitGroup
 
