@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -70,21 +71,27 @@ func TransactionTargeter(opts *TargetOption) vegeta.Targeter {
 	data := opts.Data
 	gasLimit := opts.GasLimit
 
+	mutex := sync.Mutex{}
+
 	return func(tgt *vegeta.Target) error {
 		if tgt == nil {
 			return vegeta.ErrNilTarget
 		}
+
+		mutex.Lock()
 		roundRobin = (roundRobin + 1) % len(accounts.List)
+		localRoundRobin := roundRobin
+		mutex.Unlock()
 
 		gasPrice, err := client.SuggestGasPrice(context.Background())
 		if err != nil {
 			return err
 		}
 
-		from := accounts.List[roundRobin]
+		from := accounts.List[localRoundRobin]
 		var to common.Address
 		if opts.To == "" {
-			to = accounts.List[(roundRobin+1)%len(accounts.List)].Address
+			to = accounts.List[(localRoundRobin+1)%len(accounts.List)].Address
 		} else {
 			to = common.HexToAddress(opts.To)
 		}

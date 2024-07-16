@@ -123,7 +123,7 @@ func (ta *TransactionAttacker) Attack() <-chan *vegeta.Result {
 			wg.Add(1)
 			go func(txHash common.Hash, result *vegeta.Result) {
 				defer wg.Done()
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second*36)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*120)
 				defer cancel()
 				receipt, err := waitTxConfirm(ctx, ta.Client, txHash)
 				receiptTime := result.Timestamp.Add(time.Since(result.Timestamp))
@@ -164,7 +164,7 @@ func waitTxConfirm(
 	client *ethclient.Client,
 	txHash common.Hash,
 ) (*types.Receipt, error) {
-	queryTicker := time.NewTicker(500 * time.Millisecond)
+	queryTicker := time.NewTicker(12 * time.Second)
 	defer queryTicker.Stop()
 	for {
 		select {
